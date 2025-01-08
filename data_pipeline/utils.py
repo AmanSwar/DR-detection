@@ -2,7 +2,11 @@ import os
 from tqdm import tqdm 
 from typing import LiteralString
 
-def add_path(img_name_list , path):
+def add_path(img_name_list: list , path: os.path):
+    """
+    Combines the complete path to each of the images in a image folder
+    
+    """
     for img_name in tqdm(img_name_list):
         complete_img_name = os.path.join(path , img_name)
         img_name = complete_img_name
@@ -32,16 +36,16 @@ class GradingDataset():
         """
         Train images and labels
         """
-        pass
+        return self.__train_image , self.__train_label
 
     def get_valid_set(self) -> list:
         """
         Validation Images and labels
         """
-        pass
+        return self.__valid_image , self.__valid_label
 
     def get_test_set(self) -> list:
         """
         Test images and labels
         """
-        pass
+        return self.__test_image , self.__test_label

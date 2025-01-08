@@ -111,12 +111,16 @@ class AptosGradingDataset(GradingDataset):
     def get_train_set(self):
         return self.__train_image , self.__train_label
     
+    def get_valid_set(self):
+        return self.__valid_image , self.__valid_label
+
 
 
 class DdrGradingDataset(GradingDataset):
     def __init__(self, dataset_path):
         super().__init__(dataset_path)
-        
+        self.__valid_image = self.__get_img_list("valid")
+        self.__valid_label = self.__get_labels("valid")
     
     def __get_img_list(self, subset):
         grading_subset = os.path.join(self.dataset_path , "DR_grading")
@@ -147,13 +151,77 @@ class DdrGradingDataset(GradingDataset):
             for img in tqdm(self.__train_image):
                 labels_inorder.append(labels_dic[img])
         
-        if subset == "test":
+        elif subset == "test":
             for img in tqdm(self.__test_image):
                 labels_inorder.append(labels_dic[img])
+
+        elif subset == "valid":
+            for img in tqdm(self.__valid_image):
+                labels_inorder.append(labels_dic[img])
+
+        
+        return labels_inorder
+        
+    
+
+
+class IdridGradingDataset(GradingDataset):
+
+    def __init__(self, dataset_path):
+        super().__init__(dataset_path)
+
+    def __get_img_list(self, subset):
+        grading_sub_path = os.path.join(self.dataset_path , "B. Disease Grading")
+        img_sub_path = os.path.join(grading_sub_path, "1. Original Images")
+
+        if subset == "train":
+            img_dir = os.path.join(img_sub_path , "a. Training Set")
+            all_img_name = os.listdir(img_dir)
+
+            add_path(img_name_list=all_img_name , path=img_dir)
+        
+            return all_img_name
+        
+        elif subset == "test":
+
+            img_dir = os.path.join(img_sub_path , "b. Testing Set")
+            all_img_name = os.listdir(img_dir)
+
+            add_path(img_name_list=all_img_name , path=img_dir)
+
+            return all_img_name
+        
+    def __get_labels(self, subset):
+        grading_sub_path = os.path.join(self.dataset_path , "B. Disease Grading")
+        labels_dir = os.path.join(grading_sub_path , "2. Groundtruths")
+        lables_file = None
+        for file in os.listdir(labels_dir):
+            if f"{subset}ing" in file:
+                lables_file = file
+
+        labels_df = pd.read_csv(lables_file)
+        labels_dic = {labels_df["Image name"] : labels_df["Retinopathy grade"]}
+
+        labels_inorder = []
+
+        if subset == "train":
+            for img in self.__train_image:
+                labels_inorder.append(labels_dic[img])
+
+        elif subset == "test":
+            for img in self.__test_image:
+                labels_inorder.append(labels_dic[img])
+
+        return labels_inorder
+    
 
         
 
 
+
+        
+
+        
 
 
 
