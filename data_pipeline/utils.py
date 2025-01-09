@@ -7,9 +7,9 @@ def add_path(img_name_list: list , path: os.path):
     Combines the complete path to each of the images in a image folder
     
     """
-    for img_name in tqdm(img_name_list):
-        complete_img_name = os.path.join(path , img_name)
-        img_name = complete_img_name
+    for i in tqdm(range(len(img_name_list))):
+        complete_img_name = os.path.join(path , img_name_list[i])
+        img_name_list[i] = complete_img_name
 
     
 class GradingDataset():
@@ -20,6 +20,7 @@ class GradingDataset():
         self.__test_image = self.__get_img_list('test')
         self.__train_label = self.__get_labels("train")
         self.__test_label = self.__get_labels("test")
+        print(self.__train_image)
         self.__valid_image = self.__train_image[len(self.__train_image) * 8 :]
         self.__train_image = self.__train_image[:len(self.__train_image) * 8]
         self.__valid_label = self.__train_label[len(self.__train_label) * 8 : ]
