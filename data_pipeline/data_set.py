@@ -1,5 +1,4 @@
-import sys
-sys.path.append("/home/aman/code/research/CV/dia_ret/data_pipeline")
+
 import torch
 from torch.utils.data import Dataset , DataLoader
 
@@ -53,6 +52,12 @@ class UnitedTrainingDataset(Dataset):
             idrid_train_img , idrid_train_labels = idrid.get_train_set()
             return idrid_train_img , idrid_train_labels
 
+    def get_paths(self) -> list:
+        """
+        To get combined path of all images of given dataset and corresponding labels
+        """
+
+        return self.image_path , self.labels
         
     def __len__(self):
         return len(self.image_path)
@@ -70,8 +75,74 @@ class UnitedTrainingDataset(Dataset):
         return img , label
 
 
+class UnitedValidationDataset(Dataset):
+
+    def __init__(self , transformation=None , *args):
+        self.args = args
+        self.image_path = []
+        self.labels = []
+        self.transformation = transformation
+
+        #concatinating all datasets
+        for arg in args:
+            img_path , label = self.__getdata(arg)
+            self.image_path.extend(img_path)
+            self.labels.extend(label)
+
+        #logic for shuffling
+        img_path_label_pair = list(zip(self.image_path , self.labels))
+        random.shuffle(img_path_label_pair)
+        self.image_path , self.labels = zip(*img_path_label_pair)
+
+    def __getdata(self , dataset_name: str) -> list:
+
+        if dataset_name == "eyepacs":
+            eyepacs = EyepacsGradingDataset()
+            eyepacs_valid_img , eyepacs_valid_labels = eyepacs.get_valid_set()
+            
+            return eyepacs_valid_img , eyepacs_valid_labels
+
+        elif dataset_name == "aptos":
+            aptos = AptosGradingDataset()
+            aptos_valid_img , aptos_valid_labels = aptos.get_valid_set()
+            
+            return aptos_valid_img , aptos_valid_labels
+           
+
+        elif dataset_name == "ddr":
+            ddr = DdrGradingDataset()
+            ddr_valid_img , ddr_valid_labels = ddr.get_valid_set()
+            
+            return ddr_valid_img , ddr_valid_labels
+        
+        elif dataset_name == "idrid":
+            idrid = IdridGradingDataset()
+            idrid_valid_img , idrid_valid_labels = idrid.get_valid_set()
+            return idrid_valid_img , idrid_valid_labels
+    def get_paths(self) -> list:
+        """
+        To get combined path of all images of given dataset and corresponding labels
+        """
+
+        return self.image_path , self.labels
+        
+    def __len__(self):
+        return len(self.image_path)
+    
+    def __getitem__(self, index):
+
+        img_path = self.image_path[index]
+        label = self.labels[index]
+
+        img = Image.open(img_path)
+
+        if self.transformation is not None:
+            img = self.transformation(img)
+
+        return img , label
+
      
         
 
 
-        
+
