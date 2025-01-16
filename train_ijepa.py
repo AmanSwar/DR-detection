@@ -215,8 +215,9 @@ def main(rank , world_size):
     )
 
     batch_size = 64
-    train_dataset = data_set.UnitedTrainingDataset("eyepacs" , "aptos" , "ddr" ,  "idrid" ,transformation=data_aug.Augmentation())
-    train_loader = None
+    train_dataset = data_set.UnitedTrainingDataset("eyepacs" , "aptos" , "ddr" ,  "idrid" ,transformation=data_aug.IJEPAAugmentation())
+    sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
+    train_loader = DataLoader(train_dataset , batch_size=batch_size , sampler=sampler, pin_memory=True , num_workers=8)
 
     optim = torch.optim.AdamW(
         model.parameters(),

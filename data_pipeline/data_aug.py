@@ -93,8 +93,51 @@ class DINOAugmentation:
         return views
 
 
-class Augmentation:
+class IJEPAAugmentation:
     def __init__(self):
-        pass
+        self.transform = A.Compose([
+            
+            A.RandomBrightnessContrast(
+                brightness_limit=0.1, 
+                contrast_limit=0.1, 
+                p=0.5
+            ),
+            A.OneOf([
+                A.GaussNoise(var_limit=(10.0, 50.0), p=0.5),
+                A.MultiplicativeNoise(multiplier=(0.95, 1.05), p=0.5),
+            ], p=0.3),
+            A.OneOf([
+               
+                A.GaussianBlur(blur_limit=(3, 5), p=0.3),
+                A.MedianBlur(blur_limit=3, p=0.3),
+            ], p=0.2),
+         
+            A.OneOf([
+                A.Sharpen(alpha=(0.2, 0.5), lightness=(0.5, 1.0), p=0.5),
+                A.UnsharpMask(blur_limit=(3, 7), p=0.5),
+            ], p=0.3),
+       
+            A.HueSaturationValue(
+                hue_shift_limit=5,
+                sat_shift_limit=10,
+                val_shift_limit=5,
+                p=0.3
+            ),
+    
+            A.CoarseDropout(
+                max_holes=8,
+                max_height=32,
+                max_width=32,
+                min_holes=1,
+                min_height=8,
+                min_width=8,
+                fill_value=0,
+                mask_fill_value=0,
+                p=0.2
+            ),
+        ])
+
+    def __call__(self, image):
+        return self.transform(image=image)['image']
 
 
