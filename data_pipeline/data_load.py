@@ -8,7 +8,7 @@ import pandas as pd
 
 from utils import add_path , GradingDataset
 
-base_path = "/home/aman/code/research/CV/dia_ret/"
+base_path = "/"
 class EyepacsGradingDataset(GradingDataset):
     """
     Creates list of image paths and corresponding labels

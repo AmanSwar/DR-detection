@@ -14,7 +14,12 @@ def gradingTester(dataset: str) -> None:
         eyepacs_valid_img , eyepacs_valid_labels = eyepacs.get_valid_set()
 
         print(eyepacs_train_img[:5])
-        print(eyepacs_train_labels[:5])
+        # print(eyepacs_train_labels[:5])
+
+        all_img = [img for sublist in eyepacs_test_img for img in sublist]
+
+        print(all_img[:5])
+
 
     elif dataset == "aptos":
         aptos = AptosGradingDataset()
@@ -51,6 +56,6 @@ def gradingTester(dataset: str) -> None:
 
 
 gradingTester("eyepacs")
-gradingTester("aptos")
-gradingTester("ddr")
-gradingTester("idrid")
+# gradingTester("aptos")
+# gradingTester("ddr")
+# gradingTester("idrid")

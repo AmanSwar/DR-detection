@@ -1,6 +1,7 @@
-from data_pipeline import data_set , data_load
+from data_pipeline import data_set , data_aug
 from model import DRijepa , ijepa
 from metrics import all_metrics
+
 
 #torch
 import torch
@@ -214,7 +215,7 @@ def main(rank , world_size):
     )
 
     batch_size = 64
-
+    train_dataset = data_set.UnitedTrainingDataset("eyepacs" , "aptos" , "ddr" ,  "idrid" ,transformation=data_aug.Augmentation())
     train_loader = None
 
     optim = torch.optim.AdamW(
