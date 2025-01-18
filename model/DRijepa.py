@@ -30,7 +30,7 @@ class Patchify(nn.Module):
         )
 
     def forward(self , x):
-        x = self.hierarch_proj(x) # -> batch channel height width
+        x = self.hierarch_proj(x) # -> (batch channel height width)
         x = rearrange(x , 'b c h w -> b (h w) c')
 
 
@@ -105,7 +105,7 @@ class DRIjepa(nn.Module):
         self.predictor = nn.Sequential(
             TransformerEncoder(
                 dim=embed_dim , 
-                depth=encoder_depth,
+                depth=pred_depth,
                 heads=n_heads,
                 mlp_dim= embed_dim * mlp_ratio,
                 dropout=drop
@@ -142,10 +142,8 @@ class DRIjepa(nn.Module):
             for _ in range(batch_size):
                 # to generate images more inclined to center
                 center_bias = torch.randn(2) * 0.5
-
                 x_center = self.grid_size // 2 + int(center_bias[0] * self.grid_size // 4)
                 y_center = self.grid_size // 2 + int(center_bias[1] * self.grid_size // 4)
-
                 w = torch.randint(4 , 8 , (1,)).item()
                 h = torch.randint(4 , 8 , (1,)).item()
 
@@ -163,27 +161,22 @@ class DRIjepa(nn.Module):
         return torch.tensor(boxes)
     
     def extract_target(self , feature , boxes):
-        b ,c ,d = feature.shape
-        h = w = int(c ** 0.5)
-        feature = rearrange(feature , 'b (h w) d -> b d h w' , h=h)
-
-        target_feature = []
-        for _b in range(b):
-            batch_target = []
-
+        B, N, D = features.shape
+        H = W = int(N ** 0.5)
+        features = rearrange(features, 'b (h w) d -> b d h w', h=H)
+        
+        target_features = []
+        for b in range(B):
+            batch_targets = []
             for box in boxes[b]:
+                x1, y1, x2, y2 = box
+                target = features[b:b+1, :, y1:y2, x1:x2]
 
-                x1 , y1 , x2 , y2 = box
-                target = feature[b:b+1 , : , y1:y2 , x1:x2]
-
-                target = F.adaptive_avg_pool2d(target , (2,2))
-                target = rearrange(target ,'b c h w -> b (h w) c')
-
-                batch_target.append(target)
-
-            target_feature.append(torch.cat(batch_target , dim=1))
-
-        return torch.stack(target_feature)
+                target = F.adaptive_avg_pool2d(target, (min(H, 2), min(W, 2)))
+                target = rearrange(target, 'b c h w -> b (h w) c')
+                batch_targets.append(target)
+            target_features.append(torch.cat(batch_targets, dim=1))
+        return torch.stack(target_features)
     
 
     def forward(self , images , boxes=None):

@@ -14,7 +14,6 @@ import os
 
 
 class DINOAugmentation:
-
     def __init__(self ,
         img_size: int = 1024,
         global_crop: int = 900 ,
