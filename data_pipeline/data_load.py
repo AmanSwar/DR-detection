@@ -6,7 +6,7 @@ from typing import LiteralString
 from tqdm import tqdm
 import pandas as pd
 
-from utils import add_path , GradingDataset
+from data_pipeline.utils import add_path , GradingDataset
 
 base_path = "/"
 class EyepacsGradingDataset(GradingDataset):

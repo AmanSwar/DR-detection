@@ -8,7 +8,7 @@ from torch.cuda.amp import autocast, GradScaler
 import albumentations as A
 
 
-from DRijepa import DRIjepa
+from model.DRijepa import DRIjepa
 from PIL import Image
 
 
@@ -126,6 +126,7 @@ class DRSpecificIJEPA(DRIjepa):
         
         # Get lesion-specific predictions
         lesion_predictions = {
+            #means along the dim=1
             name: head(features_with_attention.mean(1))
             for name, head in self.lesion_heads.items()
         }

@@ -15,8 +15,8 @@ class Patchify(nn.Module):
         self.path_size = patch_size
         self.n_patches = (img_size // patch_size) ** 2
 
+        # for better learned representation of image ? idk claude suggested me but I am sceptical 
         self.hierarch_proj = nn.Sequential(
-
             #
             nn.Conv2d(in_chan , embed_dim // 4 , kernel_size=7 , stride=2 , padding=3),
             nn.LayerNorm([embed_dim // 4 , img_size // 2 , img_size //2]),
@@ -25,7 +25,6 @@ class Patchify(nn.Module):
             nn.LayerNorm([embed_dim // 2 , img_size // 4 , img_size //4]),
             nn.GELU(),
             nn.Conv2d(embed_dim //2 , embed_dim , kernel_size=patch_size // 4 , stride=patch_size //4)
-
             
         )
 

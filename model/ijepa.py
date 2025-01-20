@@ -18,8 +18,8 @@ class PatchEmbedding(nn.Module):
         )
 
     def forward(self, x):
-        x = self.proj(x)  # (B, E, H', W')
-        x = rearrange(x, 'b e h w -> b (h w) e')
+        x = self.proj(x)  # (B, C, H', W')
+        x = rearrange(x, 'b c h w -> b (h w) c')
         return x
     
 
@@ -27,7 +27,6 @@ class TransEncoder(nn.Module):
 
     def __init__(self , dim , depth , n_heads , mlp_dim , dropout=0.1):
         super().__init__()
-
         self.layers = nn.ModuleList([])
 
         self.trans_block = nn.ModuleList(
@@ -145,8 +144,10 @@ class IJEPA(nn.Module):
         features = rearrange(features, 'b (h w) d -> b d h w', h=H)
         
         target_features = []
+        #batch loop
         for b in range(B):
             batch_targets = []
+            #different boxes
             for box in boxes[b]:
                 x1, y1, x2, y2 = box
                 target = features[b:b+1, :, y1:y2, x1:x2]

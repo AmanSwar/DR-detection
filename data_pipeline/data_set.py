@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import Dataset , DataLoader
 
 #util import 
-from data_load import EyepacsGradingDataset , AptosGradingDataset , IdridGradingDataset , DdrGradingDataset
+from data_pipeline.data_load import EyepacsGradingDataset , AptosGradingDataset , IdridGradingDataset , DdrGradingDataset
 import random
 from PIL import Image
 from typing import Tuple , List
