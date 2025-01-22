@@ -31,6 +31,7 @@ class Patchify(nn.Module):
     def forward(self , x):
         x = self.hierarch_proj(x) # -> (batch channel height width)
         x = rearrange(x , 'b c h w -> b (h w) c')
+        return x
 
 
 class TransformerEncoder(nn.Module):
@@ -198,7 +199,21 @@ class DRIjepa(nn.Module):
 
         return predicted_feature , target_feat
 
-         
+
+class IJEPALoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self , predicted_features , target_features):
+
+        predicted_features = F.normalize(predicted_features , dim=-1)
+        target_features = F.normalize(target_features , dim=-1)
+
+        #sim but using einsum
+        sim = torch.einsum('bnd , bnd -> bn' , predicted_features , target_features)
+
+        loss = -sim.mean()
+        return loss
     
 def create_ijepa(
         img_size = 2048,
@@ -223,7 +238,7 @@ def create_ijepa(
         drop=dropout
     )
 
-    loss = nn.MSELoss()
+    loss = IJEPALoss()
     return model , loss
 
 
