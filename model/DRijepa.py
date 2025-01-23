@@ -147,7 +147,6 @@ class DRIjepa(nn.Module):
                 w = torch.randint(4 , 8 , (1,)).item()
                 h = torch.randint(4 , 8 , (1,)).item()
 
-
                 x1 = max(0 , x_center - w // 2)
                 y1 = max(0 , y_center - h // 2)
                 x2 = min(self.grid_size , x1 + w)

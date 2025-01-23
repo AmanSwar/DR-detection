@@ -180,9 +180,8 @@ class IJEPA(nn.Module):
     
 
 class IJEPALoss(nn.Module):
-    def __init__(self):
+    def __init__(self , ):
         super().__init__()
-        
     def forward(self, predicted_features, target_features):
         # Normalize features
         predicted_features = F.normalize(predicted_features, dim=-1)
@@ -190,7 +189,8 @@ class IJEPALoss(nn.Module):
         
         # Compute cosine similarity
         sim = torch.einsum('bnd,bnd->bn', predicted_features, target_features)
-        
+
+       
         # Compute loss (negative cosine similarity)
         loss = -sim.mean()
         
