@@ -233,8 +233,10 @@ class IdridGradingDataset(GradingDataset):
         for file in os.listdir(labels_dir):
             print(file)
             if f"{subset}ing" in file.lower():
-                lables_file += os.path.join(labels_dir , file)
-               
+                lables_file = os.path.join(labels_dir , file)
+                lables_file = os.path.join(base_path , lables_file)
+        lables_file = lables_file[1:]
+        print(os.path.exists(lables_file))
         labels_df = pd.read_csv(lables_file)
         labels_dic = {img_name : label for img_name , label in zip(labels_df["Image name"] ,labels_df["Retinopathy grade"])}
 
