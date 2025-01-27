@@ -4,6 +4,10 @@ import torch.nn.functional as F
 from torchvision import transforms
 from einops import rearrange
 
+import wandb
+from tqdm import tqdm
+import time
+
 class PatchEmbedding(nn.Module):
 
     def __init__(self, img_size=224 , patch_size=16 , in_chan=3 , embed_dim=768):
@@ -180,7 +184,7 @@ class IJEPA(nn.Module):
     
 
 class IJEPALoss(nn.Module):
-    def __init__(self , ):
+    def __init__(self):
         super().__init__()
     def forward(self, predicted_features, target_features):
         # Normalize features
@@ -222,3 +226,135 @@ def create_ijepa_model(
     criterion = IJEPALoss()
     return model, criterion
 
+
+
+class IJEPATrainer:
+    """
+    Class for Ijepa trianing in single GPU
+    """
+
+    def __init__(
+            self,
+            train_loader,
+            optim,
+            scheduler=None,
+            max_ep = 300,
+            save_dir = "checkpoints",
+            log_interval = 100,
+            save_interval = 10,
+            device = 'cuda'
+
+    ):
+        
+        self.model , self.loss_fn = create_ijepa_model()
+        self.train_loader = train_loader
+        self.optim = optim
+        self.scheduler = scheduler
+        self.max_epoch = max_ep
+        self.save_dir = save_dir
+        self.save_interval = save_interval
+        self.log_interval = log_interval
+        self.device = device
+
+    def save_checkpoints(self , epoch , loss):
+        
+        checkpoint = {
+            'epoch' : epoch,
+            'model_state_dict' : self.model.module.state_dict(),
+            'optim_state_dict' : self.optim.state_dict(),
+            'loss' : loss,
+        }
+    
+        if self.scheduler is not None:
+            checkpoint['scheduler_state_dict'] = self.scheduler.state_dict()
+        
+
+        torch.save(checkpoint , self.save_dir / f"cehckpoint_ep_{epoch}.pt")
+ 
+    def train_epoch(
+            self,
+            epoch,
+    ):
+        self.model.train()
+        self.model.to(self.device)
+        n_batch = len(self.train_loader)
+        
+        total_loss = 0
+        pbar = tqdm(total=n_batch , desc=f"Epoch :{epoch}")
+        for batch_idx , img in enumerate(self.train_loader):
+
+            img = img.to(self.device)
+            self.optim.zero_grad()
+
+            pred_feat , target_feat = self.model(img)
+            loss = self.loss_fn(pred_feat , target_feat)
+
+            loss.backward()
+            self.optim.step()
+
+            self.model.momentum_update(
+                self.model.target_encoder,
+                self.model.context_encoder
+            )
+
+            total_loss += loss.item()
+
+            if batch_idx % self.log_interval == 0 :
+                wandb.log(
+                    {
+                        'batch_loss' : loss.item(),
+                        'epoch' : epoch,
+                        'batch' : batch_idx
+                    }
+                )
+
+            pbar.update(1)
+
+        pbar.close()
+
+
+        avg_loss = total_loss / n_batch
+
+        return avg_loss
+    
+
+    def train(self):
+
+        best_loss = float("inf")
+
+        for ep in range(self.max_epoch):
+
+            self.train_loader.sampler.set_epoch(ep)
+
+            epoch_start_time = time.time()
+            loss = self.train_epoch(ep)
+            epoch_duration = time.time() - epoch_start_time
+
+            if self.scheduler is not None:
+                self.scheduler.step()
+
+            wandb.log(
+                {
+                    'epoch_loss' : loss,
+                    'epoch' : ep,
+                    'learning_rate' : self.optim.param_groups[0]['lr'],
+                    'epoch_duration' : epoch_duration
+                }
+            )
+
+            print(f"Epoch {ep} : Loss = {loss:.4f} , Time={epoch_duration:.2f}s")
+
+            if ep & self.save_interval == 0 or loss < best_loss:
+                self.save_checkpoints(ep , loss)
+                if loss < best_loss:
+                    best_loss = loss
+
+
+
+
+            
+                
+            
+
+
+        
