@@ -113,53 +113,88 @@ class AptosGradingDataset(GradingDataset):
 
 
 
-class DdrGradingDataset(GradingDataset):
-    def __init__(self, dataset_path="data/ddr/DDR-dataset"):
-        super().__init__(dataset_path)
-        self._valid_image = self._get_img_list("valid")
+class DdrGradingDataset():
+
+    def __init__(
+            self ,
+            root_dir: os.path , 
+            ):
+        self.root_dir = root_dir
+        self._train_img = self._get_img_list("train")
+        self._train_label = self._get_labels("train")
+        self._test_img = self._get_img_list("test")
+        self._test_label = self._get_labels("test")
+        self._valid_img = self._get_img_list("valid")
         self._valid_label = self._get_labels("valid")
     
-    def _get_img_list(self, subset):
-        grading_subset = os.path.join(self.dataset_path , "DR_grading")
+    def __find_label_file(self , subset:str):
+        """
+        Function to find label files in the dir
+        args:
+            subset (str) -> subset of dataset  , train , valid , test
+        return:
+            None
 
-        img_dir = os.path.join(grading_subset , subset)
-        img_names_list = os.listdir(img_dir)
-
-        add_path(img_name_list=img_names_list , path=img_dir)
-
-        return img_names_list
+        """
+        for dirpath , dirnames , filenames in os.walk(self.root_dir):
+            if "DR_grading" in dirpath:
+                for files in filenames:
+                    if files == f'{subset}.txt':
+                        label_text_path = os.path.join(dirpath , files)
+        return label_text_path
     
+    def _get_img_list(self , subset):
+        """
+        Function to get image list from data corresponding to subset
+        args:
+            subset(str) -> list of images
+        """
 
-    def _get_labels(self, subset):
-        if subset == "test":
-            return []
-        grading_subset = os.path.join(self.dataset_path , "DR_grading")
-        files = os.listdir(grading_subset)
+        for dirpath , dirnames , filenames  in os.walk(self.root_dir):
+            if "DR_grading" in dirpath:
+                for dirs in dirnames:
 
-        labels_text = base_path
-        for file in files:
-            if file == f"{subset}.txt":
-                labels_text += os.path.join(grading_subset , file)
-        col_names = ['imgs' , 'labels']
-        labels_df = pd.read_csv(labels_text , sep=' ' , names=col_names)
-        labels_dic = {img_name : label for img_name , label in zip(labels_df['imgs'],labels_df['labels'])}
+                    if dirs == subset:
+                        base_dir = dirpath
+                        img_path = os.path.join(dirpath , dirs)
+
+        img_names = os.listdir(img_path)
+        
+        add_path(img_name_list=img_names , path=base_dir)
+        return img_names
+
+    def _get_labels(self, subset) -> list:
+        labels_text_path = self.__find_label_file(subset=subset)
+        col_names = ["imgs" , "labels"]
+        labels_df = pd.read_csv(labels_text_path , sep=' ' , names=col_names)
+
+        labels_dic = {img_name : label for img_name , label in zip(labels_df['imgs'] , labels_df['labels'])}
 
         labels_inorder = []
 
         if subset == "train":
-            for img in tqdm(self._train_image):
-                labels_inorder.append(labels_dic[img.split('/')[-1]])
-        
-        elif subset == "test":
-            for img in tqdm(self._test_image):
+            for img in tqdm(self._train_img):
                 labels_inorder.append(labels_dic[img.split('/')[-1]])
 
         elif subset == "valid":
-            for img in tqdm(self._valid_image):
+            for img in tqdm(self._valid_img):
+                labels_inorder.append(labels_dic[img.split('/')[-1]])
+        
+        elif subset == "test":
+            for img in tqdm(self._test_img):
                 labels_inorder.append(labels_dic[img.split('/')[-1]])
 
-        
         return labels_inorder
+    
+
+    def get_train_set(self):
+        return self._train_img , self._train_label
+
+    def get_valid_set(self):
+        return self._valid_img , self._valid_label
+
+    def get_test_set(self):
+        return self._test_img , self._test_label
         
     
 
