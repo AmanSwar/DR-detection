@@ -48,7 +48,7 @@ class UnitedTrainingDataset(Dataset):
            
 
         elif dataset_name.lower() == "ddr":
-            ddr = DdrGradingDataset()
+            ddr = DdrGradingDataset(root_dir="data/ddr")
             ddr_train_img , ddr_train_labels = ddr.get_train_set()
             
             return ddr_train_img , ddr_train_labels
