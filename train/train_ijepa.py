@@ -19,6 +19,7 @@ from pathlib import Path
 import time
 from tqdm import tqdm
 import os
+import traceback
 
 
 def cleanup():
@@ -122,9 +123,9 @@ class Trainer:
                 self.optim.step()
 
 
-            self.model.module.momentum_update(
-                self.model.module.target_encoder,
-                self.model.module.context_encoder
+            self.model.momentum_update(
+                self.model.target_encoder,
+                self.model.context_encoder
             )
 
 
@@ -199,59 +200,65 @@ def setup(rank , world_size):
     dist.init_process_group("nccl" , rank=rank , world_size=world_size)
 
 
-def main(rank , world_size):
-    setup(rank, world_size)
+def main(rank , world_size):  
+    try:  
+        setup(rank, world_size)
 
-    model , loss_fn = DRijepa.create_ijepa(
-        # img_size=224,
-        # patch_size=16,
-        # in_chans=3,
-        # embed_dim=1024,  # Increased for A100s
-        # encoder_depth=12,
-        # predictor_depth=4,
-        # num_heads=16,
-        # mlp_ratio=4,
-        # dropout=0.1
-    )
-                
-    batch_size = 64
-    train_dataset = data_set.UnitedTrainingDataset("eyepacs" , "aptos" , "ddr" ,  "idrid" ,transformation=data_aug.IJEPAAugmentation())
-    sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
-    train_loader = DataLoader(train_dataset , batch_size=batch_size , sampler=sampler, pin_memory=True , num_workers=8)
+        model , loss_fn = DRijepa.create_ijepa(
+            # img_size=224,
+            # patch_size=16,
+            # in_chans=3,
+            # embed_dim=1024,  # Increased for A100s
+            # encoder_depth=12,
+            # predictor_depth=4,
+            # num_heads=16,
+            # mlp_ratio=4,
+            # dropout=0.1
+        )
+                    
+        batch_size = 64
+        train_dataset = data_set.UnitedTrainingDataset("eyepacs" , "aptos" , "ddr" ,  "idrid" ,transformation=data_aug.IJEPAAugmentation())
+        sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
+        train_loader = DataLoader(train_dataset , batch_size=batch_size , sampler=sampler, pin_memory=True , num_workers=8)
 
-    optim = torch.optim.AdamW(
-        model.parameters(),
-        lr=1.5e-4,
-        betas=(0.9 , 0.95),
-        weight_decay=0.05
-    )
+        optim = torch.optim.AdamW(
+            model.parameters(),
+            lr=1.5e-4,
+            betas=(0.9 , 0.95),
+            weight_decay=0.05
+        )
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optim,
-        T_max=300,  # number of epochs
-        eta_min=1e-6
-    )
-    
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optim,
+            T_max=300,  # number of epochs
+            eta_min=1e-6
+        )
+        
 
-    trainer = Trainer(
-        model=model,
-        loss_fn=loss_fn,
-        rank=rank,
-        world_size=world_size,
-        train_loader=train_loader,
-        optim= optim,
-        scheduler=scheduler,
-        max_ep=300,
-        save_dir='ijepa_checkpoints',
-        log_interval=50,
-        save_interval=5,
-        use_amp=True
-    )
+        trainer = Trainer(
+            model=model,
+            loss_fn=loss_fn,
+            rank=rank,
+            world_size=world_size,
+            train_loader=train_loader,
+            optim= optim,
+            scheduler=scheduler,
+            max_ep=300,
+            save_dir='ijepa_checkpoints',
+            log_interval=50,
+            save_interval=5,
+            use_amp=True
+        )
 
 
-    trainer.train()
+        trainer.train()
 
-    cleanup()
+        cleanup()
+
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+        
 
 
 
