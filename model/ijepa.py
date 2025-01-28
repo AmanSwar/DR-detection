@@ -355,9 +355,9 @@ class IJEPATrainer:
 
 if __name__ == "__main__":
     print("Hii I am here")
-    from data_pipeline import data_set
+    from data_pipeline import data_set , data_aug
     from torch.utils.data import DataLoader
-    data_set = data_set.UnitedTrainingDataset()
+    data_set = data_set.UnitedTrainingDataset("eyepacs" , "aptos" , "ddr" ,  "idrid" ,transformation=data_aug.IJEPAAugmentation())
     train_loader = DataLoader(data_set , batch_size=32 , shuffle=True,pin_memory=True)
 
     model , loss_fn = create_ijepa_model()
