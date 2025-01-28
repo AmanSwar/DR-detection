@@ -325,7 +325,7 @@ class IJEPATrainer:
 
         best_loss = float("inf")
 
-        for ep in range(self.max_epoch):
+        for ep in tqdm(range(self.max_epoch)):
 
             self.train_loader.sampler.set_epoch(ep)
 
@@ -354,6 +354,7 @@ class IJEPATrainer:
 
 
 if __name__ == "__main__":
+    print("Hii I am here")
     from data_pipeline import data_set
     from torch.utils.data import DataLoader
     data_set = data_set.UnitedTrainingDataset()
