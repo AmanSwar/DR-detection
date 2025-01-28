@@ -235,6 +235,8 @@ class IJEPATrainer:
 
     def __init__(
             self,
+            model,
+            loss_fn,
             train_loader,
             optim,
             scheduler=None,
@@ -246,7 +248,8 @@ class IJEPATrainer:
 
     ):
         
-        self.model , self.loss_fn = create_ijepa_model()
+        self.model = model
+        self.loss_fn = loss_fn
         self.train_loader = train_loader
         self.optim = optim
         self.scheduler = scheduler
@@ -350,11 +353,33 @@ class IJEPATrainer:
                     best_loss = loss
 
 
+if __name__ == "__main__":
+    from data_pipeline import data_set
+    from torch.utils.data import DataLoader
+    data_set = data_set.UnitedTrainingDataset()
+    train_loader = DataLoader(data_set , batch_size=32 , shuffle=True,pin_memory=True)
 
-
-            
-                
-            
-
-
+    model , loss_fn = create_ijepa_model()
+    optim = torch.optim.AdamW(
+        model.parameters(),
+        lr=1.5e-4,
+        betas=(0.9 , 0.95),
+        weight_decay=0.05
+        )
         
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optim,
+        T_max=300,
+        eta_min=1e-6
+    )
+
+
+    trainer = IJEPATrainer(
+        model=model,
+        loss_fn=loss_fn,
+        train_loader= train_loader,
+        optim=optim,
+        scheduler=scheduler,
+    )
+
+    trainer.train()
