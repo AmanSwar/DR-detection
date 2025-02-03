@@ -33,23 +33,22 @@ class TransEncoder(nn.Module):
         super().__init__()
         self.layers = nn.ModuleList([])
 
-        self.trans_block = nn.ModuleList(
-            [
-                nn.LayerNorm(dim),
-                nn.MultiheadAttention(dim , n_heads , dropout=dropout),
-                nn.LayerNorm(dim),
-                nn.Sequential(
-                    nn.Linear(dim , mlp_dim),
-                    nn.GELU(),
-                    nn.Dropout(dropout),
-                    nn.Linear(mlp_dim , dim),
-                    nn.Dropout(dropout)
-                )
-            ]
-        )
-
         for _ in range(depth):
-            self.layers.append(self.trans_block)
+            block = nn.ModuleList(
+                [
+                    nn.LayerNorm(dim),
+                    nn.MultiheadAttention(dim, n_heads, dropout=dropout),
+                    nn.LayerNorm(dim),
+                    nn.Sequential(
+                        nn.Linear(dim, mlp_dim),
+                        nn.GELU(),
+                        nn.Dropout(dropout),
+                        nn.Linear(mlp_dim, dim),
+                        nn.Dropout(dropout)
+                    )
+                ]
+            )
+            self.layers.append(block)
 
 
     def forward(self , x):
@@ -122,8 +121,8 @@ class IJEPA(nn.Module):
 
     @torch.no_grad()
     def momentum_update(self , target_encoder: nn.Module , context_encoder: nn.Module , momentum=0.999):
-         for target_param , context_param in zip(target_encoder.parameters() , context_encoder.parameters()):
-             target_param.data = momentum * target_param.data + (1 - momentum) * context_param.data
+        for target_param, context_param in zip(target_encoder.parameters(), context_encoder.parameters()):
+            target_param.data.mul_(momentum).add_((1 - momentum) * context_param.data)
 
     
     def get_random_boxes(self , batch_size , n_boxes = 4):
@@ -196,7 +195,9 @@ class IJEPALoss(nn.Module):
 
        
         # Compute loss (negative cosine similarity)
-        loss = -sim.mean()
+        temperature = 0.1
+        sim = sim / temperature
+        loss = -F.log_softmax(sim, dim=-1).mean()
         
         return loss
 
@@ -261,11 +262,12 @@ class IJEPATrainer:
 
     def save_checkpoints(self , epoch , loss):
         
+        model_state = self.model.module.state_dict() if hasattr(self.model, 'module') else self.model.state_dict()
         checkpoint = {
-            'epoch' : epoch,
-            'model_state_dict' : self.model.module.state_dict(),
-            'optim_state_dict' : self.optim.state_dict(),
-            'loss' : loss,
+            'epoch': epoch,
+            'model_state_dict': model_state,
+            'optim_state_dict': self.optim.state_dict(),
+            'loss': loss,
         }
     
         if self.scheduler is not None:
@@ -327,7 +329,6 @@ class IJEPATrainer:
 
         for ep in tqdm(range(self.max_epoch)):
 
-            self.train_loader.sampler.set_epoch(ep)
 
             epoch_start_time = time.time()
             loss = self.train_epoch(ep)
@@ -347,7 +348,7 @@ class IJEPATrainer:
 
             print(f"Epoch {ep} : Loss = {loss:.4f} , Time={epoch_duration:.2f}s")
 
-            if ep & self.save_interval == 0 or loss < best_loss:
+            if ep % self.save_interval == 0 or loss < best_loss:
                 self.save_checkpoints(ep , loss)
                 if loss < best_loss:
                     best_loss = loss
@@ -384,3 +385,5 @@ if __name__ == "__main__":
     )
 
     trainer.train()
+
+    

@@ -89,7 +89,7 @@ class DRSupConModel(nn.Module):
         
         return projection , logits
     
-def train_step(model , image , label , optim , sup_con_loss_fn , ce_loss_fn , con_weight=0.5):
+def train_step(model , image , label , optim , sup_con_loss_fn , ce_loss_fn , con_weight=0.5 , use_amp=False):
 
     features , projection , logits = model(image , return_features=True)
     sup_con_loss = sup_con_loss_fn(projection , label)
@@ -97,11 +97,7 @@ def train_step(model , image , label , optim , sup_con_loss_fn , ce_loss_fn , co
     ce_loss = ce_loss_fn(logits , label)
 
     total_loss = con_weight * sup_con_loss + (1 - con_weight) * ce_loss
-
-    optim.zero_grad()
-    total_loss.backward()
-
-    optim.step()
+    
 
     return total_loss , sup_con_loss , ce_loss
 

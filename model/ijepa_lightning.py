@@ -10,7 +10,7 @@ import wandb
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 from pytorch_lightning.callbacks import ModelCheckpoint
-
+from torch.optim.lr_scheduler import LinearLR, ChainedScheduler
 
 from model.ijepa import IJEPA , IJEPALoss
 from data_pipeline import data_aug , data_set
@@ -55,6 +55,8 @@ class IjepaLightning(pl.LightningModule):
         loss = self.criterion(pred_feat, target_feat)
         
         self.log('train_loss', loss, prog_bar=True, sync_dist=True)
+        self.log('learning_rate', self.optimizers().param_groups[0]['lr'], prog_bar=True)
+        self.log('grad_norm', self.get_grad_norm(), prog_bar=False)
         return loss
     
     def on_train_batch_end(self , outputs , batch , batch_idx):
@@ -71,12 +73,14 @@ class IjepaLightning(pl.LightningModule):
         )
 
 
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(
-            optimizer,
-            T_max=self.trainer.max_epochs,
-            eta_min=1e-6
-        )
-
+        # scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        #     optimizer,
+        #     T_max=self.trainer.max_epochs,
+        #     eta_min=1e-6
+        # )
+        warmup_scheduler = LinearLR(optimizer, start_factor=0.1, total_iters=10)
+        cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=290, eta_min=1e-6)
+        scheduler = ChainedScheduler([warmup_scheduler, cosine_scheduler])
 
         return [optimizer] , [scheduler]
     
@@ -135,7 +139,7 @@ def train_ijepa():
         devices=-1,
         strategy=DDPStrategy(find_unused_parameters=False),
         max_epochs=300,
-        precision=16,
+        precision='16-mixed',
         logger=wandb_logger,
         log_every_n_steps=50,
         check_val_every_n_epoch=None,

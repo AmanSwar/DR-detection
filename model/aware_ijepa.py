@@ -57,6 +57,8 @@ class DRSpecificAugmentation:
             ),
         ])
 
+    
+
     def __call__(self, image):
         image = np.array(image)  # Ensure input is numpy array
         augmented = self.transform(image=image)

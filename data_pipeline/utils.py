@@ -28,6 +28,15 @@ class GradingDataset():
 
 
     def _get_img_list(self , subset: LiteralString) -> list:
+        """
+        Function to get image list from data corresponding to subset
+        args:
+            subset (str) -> subset of dataset  , train , valid , test
+        
+        return:
+            img_names (List) -> list of images 
+
+        """
         pass
         
     def _get_labels(self , subset : LiteralString) -> list:

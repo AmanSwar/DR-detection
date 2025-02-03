@@ -75,13 +75,16 @@ class UnitedTrainingDataset(Dataset):
 
         try:
             img = Image.open(img_path)
-
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
             if self.transformation is not None:
                 img = self.transformation(img)
 
             return img , label
+        except (IOError, FileNotFoundError) as e:
+            raise RuntimeError(f"Failed to load image {img_path}: {str(e)}")
         except Exception as e:
-            raise RuntimeError(f"error loading img {img_path}")
+            raise RuntimeError(f"Unexpected error loading {img_path}: {str(e)}")
 
 
 class UnitedValidationDataset(Dataset):
