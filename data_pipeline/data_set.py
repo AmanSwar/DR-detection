@@ -8,6 +8,8 @@ import random
 from PIL import Image
 from typing import Tuple , List
 
+import numpy as np
+
 
 class UnitedTrainingDataset(Dataset):
 
@@ -78,7 +80,9 @@ class UnitedTrainingDataset(Dataset):
             if img.mode != 'RGB':
                 img = img.convert('RGB')
             if self.transformation is not None:
+                img = np.array(img)
                 print(f"Image type : {type(img)}")
+                
                 img = self.transformation(img)
 
             return img , label
