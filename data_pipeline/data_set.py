@@ -78,6 +78,7 @@ class UnitedTrainingDataset(Dataset):
             if img.mode != 'RGB':
                 img = img.convert('RGB')
             if self.transformation is not None:
+                print(f"Image type : {type(img)}")
                 img = self.transformation(img)
 
             return img , label
