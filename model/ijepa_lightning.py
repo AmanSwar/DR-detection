@@ -158,7 +158,27 @@ def train_ijepa():
 
     trainer.fit(model, datamodule=datamodule)
 
+def verify_dataset_paths():
+    import os
+    from data_pipeline.data_load import DdrGradingDataset
+    print(f"Current working directory: {os.getcwd()}")
+    
+    dataset = DdrGradingDataset(root_dir="data/ddr")
+    print(f"\nDataset root directory: {dataset.root_dir}")
+    
+    # Verify first few images
+    train_images, _ = dataset.get_train_set()
+    print("\nChecking first 5 training images:")
+    for img_path in train_images[:5]:
+        exists = os.path.exists(img_path)
+        print(f"Image: {img_path}")
+        print(f"Exists: {exists}")
+        if exists:
+            print(f"File size: {os.path.getsize(img_path)} bytes")
+        print()
+
 if __name__ == "__main__":
+    verify_dataset_paths()
     train_ijepa()
         
         

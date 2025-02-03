@@ -9,6 +9,9 @@ def add_path(img_name_list: list , path: os.path):
     """
     for i in tqdm(range(len(img_name_list))):
         complete_img_name = os.path.join(path , img_name_list[i])
+        if not os.path.exists(complete_img_name):
+            print(f"Warning: Image not found: {complete_img_name}")
+            continue
         img_name_list[i] = complete_img_name
 
     
