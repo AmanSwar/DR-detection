@@ -168,8 +168,16 @@ class DdrGradingDataset():
             raise ValueError(f"Directory not found: {img_path}")
         img_names = os.listdir(img_path)
         
-        add_path(img_name_list=img_names , path=base_dir)
-        return img_names
+        # add_path(img_name_list=img_names , path=base_dir)
+        full_paths = []
+        for img_name in img_names:
+            full_path = os.path.join(img_path, img_name)
+            if not os.path.exists(full_path):
+                print(f"Warning: Image not found: {full_path}")
+                continue
+            full_paths.append(full_path)
+    
+        return full_paths
 
     def _get_labels(self, subset) -> list:
         labels_text_path = self.__find_label_file(subset=subset)
