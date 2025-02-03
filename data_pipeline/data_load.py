@@ -119,9 +119,10 @@ class DdrGradingDataset():
             self ,
             root_dir: os.path , 
             ):
+        
+        self.root_dir = root_dir
         if not os.path.exists(self.root_dir):
             raise ValueError(f"Dataset directory not found: {self.root_dir}")
-        self.root_dir = root_dir
         self._train_img = self._get_img_list("train")
         self._train_label = self._get_labels("train")
         self._test_img = self._get_img_list("test")
