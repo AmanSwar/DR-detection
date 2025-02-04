@@ -69,7 +69,8 @@ class TransformerEncoder(nn.Module):
             x_attn = attn(x_norm , x_norm ,x_norm)
             print(type(x))
             print(type(x_attn))
-            print(x_attn)
+            print(len(x_attn))
+            
             x = x + x_attn
 
             x_norm_2 = norm2(x)
