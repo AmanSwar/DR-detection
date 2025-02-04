@@ -262,7 +262,7 @@ class IJEPATrainer:
 
     def save_checkpoints(self , epoch , loss):
         
-        model_state = self.model.module.state_dict() if hasattr(self.model, 'module') else self.model.state_dict()
+        model_state = self.model.state_dict() if hasattr(self.model, 'module') else self.model.state_dict()
         checkpoint = {
             'epoch': epoch,
             'model_state_dict': model_state,
@@ -356,11 +356,18 @@ class IJEPATrainer:
 
 if __name__ == "__main__":
     print("Hii I am here")
+    BATCH_SIZE = 64
     from data_pipeline import data_set , data_aug
-    from torch.utils.data import DataLoader
-    data_set = data_set.UnitedTrainingDataset("eyepacs" , "aptos" , "ddr" ,  "idrid" ,transformation=data_aug.IJEPAAugmentation())
-    train_loader = DataLoader(data_set , batch_size=32 , shuffle=True,pin_memory=True)
+    dataset_names = ["eyepacs" , "aptos" , "ddr" , "idrid"]
+    uniform_data_ld = data_set.UniformTrainDataloader(
+        dataset_names=dataset_names,
+        transformation=data_aug.IJEPAAugmentation(),
+        batch_size=BATCH_SIZE,
+        num_workers=4,
+        sampler=True
+    )
 
+    data_ld = uniform_data_ld.get_loader()
     model , loss_fn = create_ijepa_model()
     optim = torch.optim.AdamW(
         model.parameters(),
@@ -379,7 +386,7 @@ if __name__ == "__main__":
     trainer = IJEPATrainer(
         model=model,
         loss_fn=loss_fn,
-        train_loader= train_loader,
+        train_loader= data_ld,
         optim=optim,
         scheduler=scheduler,
     )
