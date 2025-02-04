@@ -3,6 +3,11 @@ import torch.nn as nn
 from einops import rearrange
 import torch.nn.functional as F
 
+
+from tqdm import tqdm
+import wandb
+import time
+
 class Patchify(nn.Module):
     """
     convert images into patches , with hierachial project to support large img size
@@ -12,7 +17,7 @@ class Patchify(nn.Module):
         super().__init__()
 
         self.img_size = img_size
-        self.path_size = patch_size
+        self.patch_size = patch_size
         self.n_patches = (img_size // patch_size) ** 2
 
         # for better learned representation of image ? idk claude suggested me but I am sceptical 
@@ -39,20 +44,23 @@ class TransformerEncoder(nn.Module):
     def __init__(self , dim , depth , heads , mlp_dim , dropout=0.1):
         super().__init__()
         self.layers = nn.ModuleList([])
-        self.block = nn.ModuleList([
-            nn.LayerNorm(dim),
-            nn.MultiheadAttention(dim , heads , dropout=dropout),
-            nn.LayerNorm(dim),
-            nn.Sequential(
-                nn.Linear(dim , mlp_dim),
-                nn.GELU(),
-                nn.Dropout(dropout),
-                nn.Linear(mlp_dim , dim),
-                nn.Dropout(dropout)
-            )
-        ])
+
         for _ in range(depth):
-            self.layers.append(self.block)
+            block = nn.ModuleList(
+                [
+                    nn.LayerNorm(dim),
+                    nn.MultiheadAttention(dim, heads, dropout=dropout),
+                    nn.LayerNorm(dim),
+                    nn.Sequential(
+                        nn.Linear(dim, mlp_dim),
+                        nn.GELU(),
+                        nn.Dropout(dropout),
+                        nn.Linear(mlp_dim, dim),
+                        nn.Dropout(dropout)
+                    )
+                ]
+            )
+            self.layers.append(block)
 
     def forward(self,  x):
 
@@ -133,34 +141,26 @@ class DRIjepa(nn.Module):
             nn.init.constant_(m.weight , 1)
 
     
-    def get_random_boxes(self , batch_size , n_box=6):
-
+    def get_random_boxes(self, batch_size, n_box=6):
         boxes = []
-
-        for _ in range(n_box):
-            batch_wise_box = []
-            for _ in range(batch_size):
-                # to generate images more inclined to center
+        for b in range(batch_size):
+            batch_boxes = []
+            for _ in range(n_box):
                 center_bias = torch.randn(2) * 0.5
                 x_center = self.grid_size // 2 + int(center_bias[0] * self.grid_size // 4)
                 y_center = self.grid_size // 2 + int(center_bias[1] * self.grid_size // 4)
-                w = torch.randint(4 , 8 , (1,)).item()
-                h = torch.randint(4 , 8 , (1,)).item()
-
-                x1 = max(0 , x_center - w // 2)
-                y1 = max(0 , y_center - h // 2)
-                x2 = min(self.grid_size , x1 + w)
-                y2 = min(self.grid_size , y1 + h)
-
-                batch_wise_box.append([x1 , y1 , x2 , y2])
-
-            boxes.append(batch_wise_box)
-
-
+                w = torch.randint(4, 8, (1,)).item()
+                h = torch.randint(4, 8, (1,)).item()
+                x1 = max(0, x_center - w // 2)
+                y1 = max(0, y_center - h // 2)
+                x2 = min(self.grid_size, x1 + w)
+                y2 = min(self.grid_size, y1 + h)
+                batch_boxes.append([x1, y1, x2, y2])
+            boxes.append(batch_boxes)
         return torch.tensor(boxes)
     
     def extract_target(self , feature , boxes):
-        B, N, D = features.shape
+        B, N, D = feature.shape
         H = W = int(N ** 0.5)
         features = rearrange(features, 'b (h w) d -> b d h w', h=H)
         
@@ -176,6 +176,17 @@ class DRIjepa(nn.Module):
                 batch_targets.append(target)
             target_features.append(torch.cat(batch_targets, dim=1))
         return torch.stack(target_features)
+    
+    @torch.no_grad()
+    def momentum_update(
+        self , 
+        target_encoder: nn.Module , 
+        context_encoder: nn.Module , 
+        momentum=0.999
+        
+        ):
+        for target_param, context_param in zip(target_encoder.parameters(), context_encoder.parameters()):
+            target_param.data.mul_(momentum).add_((1 - momentum) * context_param.data)
     
 
     def forward(self , images , boxes=None):
@@ -214,7 +225,7 @@ class IJEPALoss(nn.Module):
         loss = -sim.mean()
         return loss
     
-def create_ijepa(
+def create_DRijepa(
         img_size = 2048,
         patch_size = 32 , 
         in_chan = 3 , 
@@ -240,8 +251,171 @@ def create_ijepa(
     loss = IJEPALoss()
     return model , loss
 
+class Trainer:
 
+    def __init__(
+            self,
+            model,
+            loss_fn,
+            train_loader,
+            optim,
+            scheduler=None,
+            max_ep=300,
+            save_dir="checkpoint",
+            log_interval=100,
+            save_interval=10,
+            device="cuda"
+    ):
+        
+        self.model = model
+        self.loss_fn = loss_fn
+        self.train_loader = train_loader
+        self.optim = optim
+        self.scheduler = scheduler
+        self.max_ep = max_ep
+        self.save_dir = save_dir
+        self.save_interval = save_interval
+        self.log_interval = log_interval
+        self.device = device
 
+    def save_checkpoint(
+            self,
+            epoch,
+            loss
+    ):
+        
+        model_state = self.model.state_dict() if hasattr(self.model, 'module') else self.model.state_dict()
+        checkpoint = {
+            'epoch': epoch,
+            'model_state_dict': model_state,
+            'optim_state_dict': self.optim.state_dict(),
+            'loss': loss,
+        }
+        if self.scheduler is not None:
+            checkpoint['scheduler_state_dict'] = self.scheduler.state_dict()
+
+        torch.save(checkpoint , self.save_dir / f"cehckpoint_ep_{epoch}.pt")
+
+    def train_epoch(self, epoch):
+
+        self.model.train()
 
         
 
+        n_batch = len(self.train_loader)
+
+        total_loss = 0
+        pbar = tqdm(total=n_batch , desc=f"Epoch : {epoch}")
+
+        for batch_idx , img in enumerate(self.train_loader):
+
+            img = img.to(self.device)
+            self.optim.zero_grad()
+
+            pred_feat , target_feat = self.model(img)
+            loss = self.loss_fn(pred_feat , target_feat)
+
+
+            loss.backward()
+            self.optim.step()
+
+            self.model.momentum_update(
+                self.model.target_encoder,
+                self.model.context_encoder
+            )
+
+            total_loss += loss.item()
+
+
+            if batch_idx % self.log_interval == 0:
+
+                wandb.log(
+                    {
+                        'batch_loss' : loss.item(),
+                        'epoch' : epoch,
+                        'batch' : batch_idx
+                    }
+                )
+
+
+            pbar.update()
+
+
+        pbar.close()
+
+        avg_loss = total_loss / n_batch
+        return avg_loss
+    
+
+    def train(self):
+
+        best_loss = float("inf")
+        self.model.to(self.device)
+        for ep in tqdm(range(self.max_ep)):
+
+            epoch_start_time = time.time()
+
+            loss = self.train_epoch(ep)
+            ep_dur = time.time() - epoch_start_time
+
+            if self.scheduler is not None:
+                self.scheduler.step()
+
+
+            wandb.log(
+                {
+                    'epoch_loss' : loss,
+                    'epoch' : ep,
+                    'learning_rate' : self.optim.param_groups[0]['lr'],
+                    'epoch_duration' : ep_dur
+                }
+            )
+
+            print(f"Epoch {ep} : Loss = {loss:.4f} , Time={ep_dur:.2f}s")
+
+            if ep % self.save_interval == 0 or loss < best_loss:
+                self.save_checkpoint(ep , loss)
+                if loss < best_loss:
+                    best_loss = loss
+                
+
+        
+if __name__ == "__main__":
+    print("Hii I am here")
+    BATCH_SIZE = 64
+    from data_pipeline import data_set , data_aug
+    dataset_names = ["eyepacs" , "aptos" , "ddr" , "idrid"]
+    uniform_data_ld = data_set.UniformTrainDataloader(
+        dataset_names=dataset_names,
+        transformation=data_aug.IJEPAAugmentation(),
+        batch_size=BATCH_SIZE,
+        num_workers=4,
+        sampler=True
+    )
+
+    data_ld = uniform_data_ld.get_loader()
+    model , loss_fn = create_DRijepa()
+    optim = torch.optim.AdamW(
+        model.parameters(),
+        lr=1.5e-4,
+        betas=(0.9 , 0.95),
+        weight_decay=0.05
+        )
+        
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optim,
+        T_max=300,
+        eta_min=1e-6
+    )
+
+
+    trainer = Trainer(
+        model=model,
+        loss_fn=loss_fn,
+        train_loader= data_ld,
+        optim=optim,
+        scheduler=scheduler,
+    )
+
+    trainer.train()
+    
