@@ -95,7 +95,7 @@ class DINOAugmentation:
 class IJEPAAugmentation:
     def __init__(self):
         self.transform = A.Compose([
-            
+            A.Resize(1024 , 1024),
             A.RandomBrightnessContrast(
                 brightness_limit=0.1, 
                 contrast_limit=0.1, 
@@ -134,9 +134,14 @@ class IJEPAAugmentation:
                 mask_fill_value=0,
                 p=0.2
             ),
+            ToTensorV2()
         ])
 
+
     def __call__(self, image):
-        return self.transform(image=image)['image']
+        trans_img =  self.transform(image=image)['image']
+        return trans_img.float() / 255.0
+
+
 
 
