@@ -8,6 +8,8 @@ from tqdm import tqdm
 import wandb
 import time
 
+from model.utils import RearrangeAndLayerNorm
+
 class Patchify(nn.Module):
     """
     convert images into patches , with hierachial project to support large img size
@@ -24,10 +26,12 @@ class Patchify(nn.Module):
         self.hierarch_proj = nn.Sequential(
             #
             nn.Conv2d(in_chan , embed_dim // 4 , kernel_size=7 , stride=2 , padding=3),
-            nn.LayerNorm([embed_dim // 4 , img_size // 2 , img_size //2]),
+            # nn.LayerNorm([embed_dim // 4 , img_size // 2 , img_size //2]),
+            RearrangeAndLayerNorm(embed_dim // 4),
             nn.GELU(),
             nn.Conv2d(embed_dim // 4 , embed_dim // 2 , kernel_size=3 , stride=2 , padding=1),
-            nn.LayerNorm([embed_dim // 2 , img_size // 4 , img_size //4]),
+            # nn.LayerNorm([embed_dim // 2 , img_size // 4 , img_size //4]),
+            RearrangeAndLayerNorm(embed_dim // 2),
             nn.GELU(),
             nn.Conv2d(embed_dim //2 , embed_dim , kernel_size=patch_size // 4 , stride=patch_size //4)
             
@@ -302,17 +306,14 @@ class Trainer:
     def train_epoch(self, epoch):
 
         self.model.train()
-
         
-
         n_batch = len(self.train_loader)
 
         total_loss = 0
         pbar = tqdm(total=n_batch , desc=f"Epoch : {epoch}")
 
-        for batch_idx , img in enumerate(self.train_loader):
-
-            img = img.to(self.device)
+        for batch_idx , batch in enumerate(self.train_loader):
+            img = batch[0].to(self.device)
             self.optim.zero_grad()
 
             pred_feat , target_feat = self.model(img)
