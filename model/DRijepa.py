@@ -67,7 +67,10 @@ class TransformerEncoder(nn.Module):
         for norm1 , attn, norm2 , mlp in self.layers:
             x_norm = norm1(x)
             x_attn = attn(x_norm , x_norm ,x_norm)
+            print(type(x))
+            print(type(x_attn))
             x = x + x_attn
+            
             x_norm_2 = norm2(x)
             x_mlp = mlp(x_norm_2)
             x = x + x_mlp
