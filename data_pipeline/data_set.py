@@ -1,6 +1,6 @@
 
 import torch
-from torch.utils.data import Dataset , DataLoader
+from torch.utils.data import Dataset , DataLoader , WeightedRandomSampler
 
 #util import 
 from data_pipeline.data_load import EyepacsGradingDataset , AptosGradingDataset , IdridGradingDataset , DdrGradingDataset
@@ -60,12 +60,19 @@ class UnitedTrainingDataset(Dataset):
             idrid_train_img , idrid_train_labels = idrid.get_train_set()
             return idrid_train_img , idrid_train_labels
 
-    def get_paths(self) -> Tuple[List[str] , List[int]]:
+    def get_paths(self) ->  List[float]:
         """
         To get combined path of all images of given dataset and corresponding labels
         """
 
-        return self.image_path , self.labels
+        return self.image_path
+    
+    def get_labels(self) -> List[int]:
+        """
+        Function to return labels
+        """
+        return self.labels
+
         
     def __len__(self):
         return len(self.image_path)
@@ -81,8 +88,6 @@ class UnitedTrainingDataset(Dataset):
                 img = img.convert('RGB')
             if self.transformation is not None:
                 img = np.array(img)
-                print(f"Image type : {type(img)}")
-                
                 img = self.transformation(img)
 
             return img , label
@@ -94,7 +99,7 @@ class UnitedTrainingDataset(Dataset):
 
 class UnitedValidationDataset(Dataset):
 
-    def __init__(self , transformation=None , *args):
+    def __init__(self ,*args , transformation=None):
         self.args = args
         self.image_path = []
         self.labels = []
@@ -127,7 +132,7 @@ class UnitedValidationDataset(Dataset):
            
 
         elif dataset_name == "ddr":
-            ddr = DdrGradingDataset()
+            ddr = DdrGradingDataset(root_dir="data/ddr")
             ddr_valid_img , ddr_valid_labels = ddr.get_valid_set()
             
             return ddr_valid_img , ddr_valid_labels
@@ -160,6 +165,50 @@ class UnitedValidationDataset(Dataset):
 
      
         
+
+class UniformTrainDataloader:
+
+    def __init__(
+            
+            self ,
+            dataset_names: List,
+            transformation , 
+            batch_size: int,
+            num_workers: int,
+            sampler=True
+            
+            ):
+        
+        self.dataset_names = dataset_names
+        self.sampler = sampler 
+        self.transformation = transformation
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        training_dataset = UnitedTrainingDataset(*self.dataset_names , transformation=self.transformation)
+        
+        if sampler:
+            from collections import Counter
+
+            labels_np = np.array(training_dataset.get_labels())
+            class_counts = Counter(labels_np)
+
+            total_samples = len(labels_np)
+
+            # class weights -> less number of class -> more weightage
+            class_weights = {cls: total_samples/count for cls , count in class_counts.items()}
+
+            sample_weight = [class_weights[label] for label in labels_np]
+            weight_tensor = torch.DoubleTensor(sample_weight)
+
+            sampler = WeightedRandomSampler(weights=weight_tensor , num_samples=len(weight_tensor) , replacement=True)
+
+            self.sampler = sampler
+
+        self.train_loader = DataLoader(dataset=training_dataset ,sampler=sampler ,batch_size=self.batch_size , pin_memory=True , num_workers=self.num_workers)
+
+    def get_loader(self):
+        return self.train_loader
+    
 
 
 
