@@ -189,14 +189,17 @@ class DdrGradingDataset():
         labels_inorder = []
 
         if subset == "train":
+            print("train")
             for img in tqdm(self._train_img):
                 labels_inorder.append(labels_dic[img.split('/')[-1]])
 
         elif subset == "valid":
+            print("valid")
             for img in tqdm(self._valid_img):
                 labels_inorder.append(labels_dic[img.split('/')[-1]])
         
         elif subset == "test":
+            print("test")
             for img in tqdm(self._test_img):
                 labels_inorder.append(labels_dic[img.split('/')[-1]])
 
