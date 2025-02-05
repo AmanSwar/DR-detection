@@ -216,11 +216,21 @@ def main(rank , world_size):
             # dropout=0.1
         )
                     
-        batch_size = 64
-        train_dataset = data_set.UnitedTrainingDataset("eyepacs" , "aptos" , "ddr" ,  "idrid" ,transformation=data_aug.IJEPAAugmentation())
-        sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
-        train_loader = DataLoader(train_dataset , batch_size=batch_size , sampler=sampler, pin_memory=True , num_workers=8)
+        batch_size = 128
+        # train_dataset = data_set.UnitedTrainingDataset("eyepacs" , "aptos" , "ddr" ,  "idrid" ,transformation=data_aug.IJEPAAugmentation())
+        # sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
+        # train_loader = DataLoader(train_dataset , batch_size=batch_size , sampler=sampler, pin_memory=True , num_workers=8)
+        dataset_names = ["eyepacs" , "aptos" , "ddr" , "idrid"]
+        uniform_data_ld = data_set.UniformTrainDataloader(
+            dataset_names=dataset_names,
+            transformation=data_aug.IJEPAAugmentation(),
+            batch_size=batch_size,
+            num_workers=4,
+            sampler=True
+        )
 
+        data_ld = uniform_data_ld.get_loader()
+        
         optim = torch.optim.AdamW(
             model.parameters(),
             lr=1.5e-4,
@@ -240,7 +250,7 @@ def main(rank , world_size):
             loss_fn=loss_fn,
             rank=rank,
             world_size=world_size,
-            train_loader=train_loader,
+            train_loader=data_ld,
             optim= optim,
             scheduler=scheduler,
             max_ep=300,
