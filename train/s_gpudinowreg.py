@@ -61,7 +61,7 @@ def train_dino(
     dataset_names = ["eyepacs" , "aptos" , "ddr" , "idrid"]
     uniform_data_ld = UniformTrainDataloader(
         dataset_names=dataset_names,
-        transformation=augmentor,
+        transformation=None,
         batch_size=batch_size,
         num_workers=4,
         sampler=True
@@ -141,7 +141,7 @@ def train_dino(
             images = images.to(device)
             
             # Generate two augmented views
-            view1, view2 = augmentor(images)
+            view1, view2 = augmentor(images.cpu().numpy())
             view1, view2 = view1.to(device), view2.to(device)
             
             # Forward pass
