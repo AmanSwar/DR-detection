@@ -10,6 +10,9 @@ from typing import Tuple , List
 
 import numpy as np
 
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+
 
 class UnitedTrainingDataset(Dataset):
 
@@ -19,7 +22,10 @@ class UnitedTrainingDataset(Dataset):
         self.labels = []
         self.transformation = transformation
         self.img_size= img_size
-
+        self.base_transform = A.Compose([
+        A.Resize(img_size, img_size),
+        ToTensorV2()
+        ])
         #appending all datasets
         for arg in args:
             img_path , label = self.__getdata(arg)
@@ -88,8 +94,9 @@ class UnitedTrainingDataset(Dataset):
             img = Image.open(img_path)
             if img.mode != 'RGB':
                 img = img.convert('RGB')
+            img = np.array(img)
             
-            img = img.resize((self.img_size, self.img_size), Image.Resampling.BILINEAR)
+            img = self.base_transform(image=img)['image']
             if self.transformation is not None:
                 img = np.array(img)
                 img = self.transformation(img)
