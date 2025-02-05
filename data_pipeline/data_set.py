@@ -13,11 +13,12 @@ import numpy as np
 
 class UnitedTrainingDataset(Dataset):
 
-    def __init__(self , *args , transformation=None):
+    def __init__(self , *args , transformation=None , img_size=1024):
         self.args = args
         self.image_path = []
         self.labels = []
         self.transformation = transformation
+        self.img_size= img_size
 
         #appending all datasets
         for arg in args:
@@ -82,10 +83,13 @@ class UnitedTrainingDataset(Dataset):
         img_path = self.image_path[index]
         label = self.labels[index]
 
+        
         try:
             img = Image.open(img_path)
             if img.mode != 'RGB':
                 img = img.convert('RGB')
+            
+            img = img.resize((self.img_size, self.img_size), Image.Resampling.BILINEAR)
             if self.transformation is not None:
                 img = np.array(img)
                 img = self.transformation(img)
@@ -99,11 +103,12 @@ class UnitedTrainingDataset(Dataset):
 
 class UnitedValidationDataset(Dataset):
 
-    def __init__(self ,*args , transformation=None):
+    def __init__(self ,*args , transformation=None , img_size=1024):
         self.args = args
         self.image_path = []
         self.labels = []
         self.transformation = transformation
+        self.img_size = img_size
 
         #concatinating all datasets
         for arg in args:
@@ -157,7 +162,7 @@ class UnitedValidationDataset(Dataset):
         label = self.labels[index]
 
         img = Image.open(img_path)
-
+        img = img.resize((self.img_size, self.img_size), Image.Resampling.BILINEAR)
         if self.transformation is not None:
             img = self.transformation(img)
 
