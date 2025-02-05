@@ -6,41 +6,59 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import torch.distributed as dist
 
-
 class RetAug:
-
-    def __init__(self , img_size=512):
-        
+    def __init__(self, img_size=512):
+        # Base transform for both views
         self.base_transform = A.Compose([
             A.Resize(img_size, img_size),
+            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+
+        # Additional augmentations for the first view
+        self.view1_transform = A.Compose([
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
             A.RandomRotate90(p=0.5),
             A.OneOf([
-                A.GaussianBlur(blur_limit=(3,7)),
+                A.GaussianBlur(blur_limit=(3, 7)),
                 A.GaussNoise(var_limit=(10.0, 50.0)),
             ], p=0.4),
             A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.8),
             ToTensorV2()
         ])
-        
-        self.lesion_transform = A.Compose([
+
+        # Additional augmentations for the second view (lesion-focused)
+        self.view2_transform = A.Compose([
+            A.HorizontalFlip(p=0.5),
+            A.VerticalFlip(p=0.5),
+            A.RandomRotate90(p=0.5),
             A.OneOf([
                 A.ElasticTransform(alpha=50, sigma=7, alpha_affine=10, p=0.3),
                 A.OpticalDistortion(distort_limit=0.5, shift_limit=0.5, p=0.4),
-                # A.RandomSizedCrop(min_max_height=(32, 64), height=img_size, width=img_size, p=0.3)
-                A.RandomSizedCrop(min_max_height=(32, 64), size=(img_size, img_size), p=0.3)
-
+                A.RandomSizedCrop(min_max_height=(32, 64), height=img_size, width=img_size, p=0.3)
             ], p=0.5),
             A.CoarseDropout(max_holes=8, max_height=32, max_width=32, 
-                          fill_value=0, mask_fill_value=0, p=0.5)
+                          fill_value=0, mask_fill_value=0, p=0.5),
+            ToTensorV2()
         ])
-    
-    def __call__(self, image):
-        base_view = self.base_transform(image=image)['image']
-        lesion_view = self.lesion_transform(image=image)['image']
-        return base_view, lesion_view
 
+    def __call__(self, image):
+        # Ensure image is in correct format (H, W, C)
+        if isinstance(image, torch.Tensor):
+            if image.dim() == 3 and image.shape[0] == 3:  # If CHW format
+                image = image.permute(1, 2, 0).numpy()
+            else:
+                image = image.numpy()
+        
+        # Apply base transform first
+        transformed = self.base_transform(image=image)
+        base_img = transformed['image']
+
+        # Apply view-specific transforms
+        view1 = self.view1_transform(image=base_img)['image']
+        view2 = self.view2_transform(image=base_img)['image']
+
+        return view1, view2
 
 # class RetAug:
 #     def __init__(self, img_size=512):
