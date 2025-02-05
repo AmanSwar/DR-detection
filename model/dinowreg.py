@@ -228,6 +228,7 @@ class DINOwithReg(nn.Module):
 #######################
 # for pytorch lightning module
 #######################
+import pytorch_lightning as pl
 
 class DINOLoss(nn.Module):
     """Combined DINO + Register consistency loss"""
@@ -270,13 +271,13 @@ class RetinaDINOLightning(pl.LightningModule):
         self.save_hyperparameters()
         
         # Initialize student and teacher models
-        self.student = ViTWithRegisters(
+        self.student = ViTRegs(
             img_size=img_size,
             patch_size=patch_size,
             embed_dim=embed_dim,
             num_registers=num_registers
         )
-        self.teacher = ViTWithRegisters(
+        self.teacher = ViTRegs(
             img_size=img_size,
             patch_size=patch_size,
             embed_dim=embed_dim,
@@ -349,14 +350,14 @@ class RetinaDINOLightning(pl.LightningModule):
             else:
                 decay_params.append(param)
 
-        optim = AdamW([
+        optim = torch.optim.AdamW([
             {'params': decay_params, 'weight_decay': self.weight_decay},
             {'params': no_decay_params, 'weight_decay': 0.0}
         ], lr=0.0005 * (self.batch_size / 256), betas=(0.9, 0.95))
         
         # Cosine schedule with linear warmup
         lr_scheduler = {
-            'scheduler': CosineAnnealingLR(
+            'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR(
                 optim,
                 T_max=self.max_epochs - self.warmup_epochs,
                 eta_min=1e-6
@@ -366,7 +367,7 @@ class RetinaDINOLightning(pl.LightningModule):
         }
         
         if self.warmup_epochs > 0:
-            warmup_scheduler = LinearLR(
+            warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
                 optim,
                 start_factor=0.01,
                 end_factor=1.0,
