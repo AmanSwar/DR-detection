@@ -22,10 +22,7 @@ class UnitedTrainingDataset(Dataset):
         self.labels = []
         self.transformation = transformation
         self.img_size= img_size
-        self.base_transform = A.Compose([
-        A.Resize(img_size, img_size),
-        ToTensorV2()
-        ])
+        
         #appending all datasets
         for arg in args:
             img_path , label = self.__getdata(arg)
@@ -96,10 +93,9 @@ class UnitedTrainingDataset(Dataset):
                 img = img.convert('RGB')
             img = np.array(img)
             
-            img = self.base_transform(image=img)['image']
             if self.transformation is not None:
-                img = np.array(img)
-                img = self.transformation(img)
+                view1, view2 = self.transformation(img)
+                return (view1, view2), label
 
             return img , label
         except (IOError, FileNotFoundError) as e:
