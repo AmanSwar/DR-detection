@@ -318,13 +318,13 @@ class RetinaDINOLightning(pl.LightningModule):
             img_size=img_size,
             patch_size=patch_size,
             embed_dim=embed_dim,
-            num_registers=num_registers
+            num_regs=num_registers
         )
         self.teacher = ViTRegs(
             img_size=img_size,
             patch_size=patch_size,
             embed_dim=embed_dim,
-            num_registers=num_registers
+            num_regs=num_registers
         )
         
         # Initialize teacher from student
