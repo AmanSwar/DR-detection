@@ -130,6 +130,7 @@ class MaskedViT(nn.Module):
         return mask.bool()
     
     def forward(self , x , mask_ratio=0.4):
+        
         B, N, D = x.shape
         x = self.patch_embed(x)
         x = x.flatten(2).transpose(1,2)
