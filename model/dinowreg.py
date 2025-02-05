@@ -7,37 +7,78 @@ from albumentations.pytorch import ToTensorV2
 import torch.distributed as dist
 
 
-class RetAug:
+# class RetAug:
 
-    def __init__(self , img_size=512):
+#     def __init__(self , img_size=512):
         
-        self.base_transform = A.Compose([
+#         self.base_transform = A.Compose([
+#             A.Resize(img_size, img_size),
+#             A.HorizontalFlip(p=0.5),
+#             A.VerticalFlip(p=0.5),
+#             A.RandomRotate90(p=0.5),
+#             A.OneOf([
+#                 A.GaussianBlur(blur_limit=(3,7)),
+#                 A.GaussNoise(var_limit=(10.0, 50.0)),
+#             ], p=0.4),
+#             A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.8),
+#             ToTensorV2()
+#         ])
+        
+#         self.lesion_transform = A.Compose([
+#             A.OneOf([
+#                 A.ElasticTransform(alpha=50, sigma=7, alpha_affine=10, p=0.3),
+#                 A.OpticalDistortion(distort_limit=0.5, shift_limit=0.5, p=0.4),
+#                 A.RandomSizedCrop(min_max_height=(32, 64), height=img_size, width=img_size, p=0.3)
+#             ], p=0.5),
+#             A.CoarseDropout(max_holes=8, max_height=32, max_width=32, 
+#                           fill_value=0, mask_fill_value=0, p=0.5)
+#         ])
+    
+#     def __call__(self, image):
+#         base_view = self.base_transform(image=image)['image']
+#         lesion_view = self.lesion_transform(image=image)['image']
+#         return base_view, lesion_view
+
+
+class RetAug:
+    def __init__(self, img_size=512):
+        self.transform1 = A.Compose([
+            A.Resize(img_size, img_size),
+            A.HorizontalFlip(p=0.5),
+            A.VerticalFlip(p=0.5),
+            A.RandomRotate90(p=0.5),
+            ToTensorV2()
+        ])
+
+        self.transform2 = A.Compose([
             A.Resize(img_size, img_size),
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
             A.RandomRotate90(p=0.5),
             A.OneOf([
-                A.GaussianBlur(blur_limit=(3,7)),
+                A.GaussianBlur(blur_limit=(3, 7)),
                 A.GaussNoise(var_limit=(10.0, 50.0)),
             ], p=0.4),
-            A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.8),
+            A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, p=0.8),
+            A.CoarseDropout(max_holes=8, max_height=32, max_width=32, 
+                          fill_value=0, mask_fill_value=0, p=0.5),
             ToTensorV2()
         ])
-        
-        self.lesion_transform = A.Compose([
+
+        self.lesion_sim = A.Compose([
             A.OneOf([
                 A.ElasticTransform(alpha=50, sigma=7, alpha_affine=10, p=0.3),
-                A.OpticalDistortion(distort_limit=0.5, shift_limit=0.5, p=0.4),
-                A.RandomSizedCrop(min_max_height=(32, 64), height=img_size, width=img_size, p=0.3)
-            ], p=0.5),
-            A.CoarseDropout(max_holes=8, max_height=32, max_width=32, 
-                          fill_value=0, mask_fill_value=0, p=0.5)
+                A.RandomResizedCrop(height=img_size, width=img_size, 
+                                   scale=(0.08, 0.2), ratio=(0.75, 1.33), p=0.3),
+                A.OpticalDistortion(distort_limit=0.5, p=0.4)
+            ], p=0.5)
         ])
-    
+
     def __call__(self, image):
-        base_view = self.base_transform(image=image)['image']
-        lesion_view = self.lesion_transform(image=image)['image']
-        return base_view, lesion_view
+        view1 = self.transform1(image=image)['image']
+        view2 = self.transform2(image=image)['image']
+        view2 = self.lesion_sim(image=view2.permute(1,2,0).numpy())['image'].permute(2,0,1)
+        return view1, view2
 
 class ViTRegs(nn.Module):
 
