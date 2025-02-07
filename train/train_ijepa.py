@@ -204,7 +204,7 @@ def main(rank , world_size):
     try:  
         setup(rank, world_size)
 
-        model , loss_fn = DRijepa.create_ijepa(
+        model , loss_fn = DRijepa.create_DRijepa(
             # img_size=224,
             # patch_size=16,
             # in_chans=3,
@@ -273,7 +273,7 @@ def main(rank , world_size):
 
 
 if __name__ == "__main__":
-    world_size = 8
+    world_size = 2
 
     mp.spawn(
         main,
