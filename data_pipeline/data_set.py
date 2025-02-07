@@ -94,8 +94,8 @@ class UnitedTrainingDataset(Dataset):
             img = np.array(img)
             
             if self.transformation is not None:
-                view1, view2 = self.transformation(img)
-                return (view1, view2), label
+                trans_img = self.transformation(img)
+                return trans_img, label
 
             return img , label
         except (IOError, FileNotFoundError) as e:

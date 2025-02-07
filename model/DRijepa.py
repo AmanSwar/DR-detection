@@ -22,7 +22,7 @@ class Patchify(nn.Module):
         self.patch_size = patch_size
         self.n_patches = (img_size // patch_size) ** 2
 
-        # for better learned representation of image ? idk claude suggested me but I am sceptical 
+        # for better learned representation of image ? idk claude suggested me but I am sceptical (me being honest here :))
         self.hierarch_proj = nn.Sequential(
             #
             nn.Conv2d(in_chan , embed_dim // 4 , kernel_size=7 , stride=2 , padding=3),
@@ -50,6 +50,7 @@ class TransformerEncoder(nn.Module):
         self.layers = nn.ModuleList([])
 
         for _ in range(depth):
+            # reinitiallizing to avoid same weights
             block = nn.ModuleList(
                 [
                     nn.LayerNorm(dim),
@@ -72,7 +73,7 @@ class TransformerEncoder(nn.Module):
             x_norm = norm1(x)
             x_attn = attn(x_norm , x_norm ,x_norm)
             
-            
+            # attention gives out tuple
             x = x + x_attn[0]
 
             x_norm_2 = norm2(x)
@@ -80,6 +81,7 @@ class TransformerEncoder(nn.Module):
             x = x + x_mlp
 
         return x
+    
     
 class DRIjepa(nn.Module):
     def __init__(

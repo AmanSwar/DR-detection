@@ -18,6 +18,46 @@ from data_pipeline import data_set , data_aug
 def cleanup():
     dist.destroy_process_group()
 
+
+class AdaptiveLossWeightScheduler:
+    
+    def __init__(
+            self,
+            initial_con_weight=0.7,
+            min_con_weight=0.3,
+            decay_epochs=50
+    ):
+        
+        self.current_con_weight = initial_con_weight
+        self.min_con_weight = min_con_weight
+        self.decay_epochs = decay_epochs
+
+    def step(self , epoch , metric=None):
+        """
+        gradually decrese contrastive weight over time
+        """
+        
+        decay = min(1.0 , epoch / self.decay_epochs)
+
+        self.current_con_weight = max(
+            self.min_con_weight,
+            self.current_con_weight * (1 - decay * 0.1)
+        )
+
+        return self.current_con_weight
+    
+    def train_step(model , image , label , optim , sup_con_loss_fn , ce_loss_fn  ,con_weight):
+        feautes , projection , logits = model(image , return_features=True)
+
+        sup_con_loss = sup_con_loss_fn(projection , label)
+        ce_loss = ce_loss_fn(logits , label)
+
+        total_loss = con_weight * sup_con_loss + (1 - con_weight) * ce_loss
+
+        return total_loss , sup_con_loss , ce_loss
+    
+
+
 class Trainer:
 
     def __init__(
