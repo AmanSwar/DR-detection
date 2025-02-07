@@ -12,7 +12,8 @@ from torch.utils.data import DataLoader
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.optim.lr_scheduler import LinearLR, ChainedScheduler
 
-from model.ijepa import IJEPA , IJEPALoss
+# from model.ijepa import IJEPA 
+from model.DRijepa import DRIjepa , IJEPALoss
 from data_pipeline import data_aug , data_set
 
 class IjepaLightning(pl.LightningModule):
@@ -34,16 +35,16 @@ class IjepaLightning(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
 
-        self.ijepa = IJEPA(
+        self.ijepa = DRIjepa(
             img_size=img_size,
             patch_size=patch_size,
-            in_chans=in_chans,
+            in_chan=in_chans,
             embed_dim=embed_dim,
             encoder_depth=encoder_depth,
-            predictor_depth=predictor_depth,
-            num_heads=num_heads,
+            pred_depth=predictor_depth,
+            n_heads=num_heads,
             mlp_ratio=mlp_ratio,
-            dropout=dropout
+            drop=dropout
         )
 
         self.criterion = IJEPALoss()
@@ -106,15 +107,18 @@ class IJEPADataModule(pl.LightningDataModule):
         )
 
     def train_dataloader(self):
-
-        return DataLoader(
-            self.full_dataset,
+        dataset_names = ["eyepacs" , "aptos" , "ddr" , "idrid"]
+        uniform_data_ld = data_set.UniformTrainDataloader(
+            dataset_names=dataset_names,
+            transformation=data_aug.IJEPAAugmentation(),
             batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=self.num_workers,
-            pin_memory=True,
-            persistent_workers=True
+            num_workers=4,
+            sampler=True
         )
+
+        data_ld = uniform_data_ld.get_loader()
+
+        return data_ld
     
 def train_ijepa():
 
@@ -178,7 +182,6 @@ def verify_dataset_paths():
         print()
 
 if __name__ == "__main__":
-    verify_dataset_paths()
     train_ijepa()
         
         
