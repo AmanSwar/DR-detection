@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-
+import numpy as np
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from torchvision.transforms import RandomApply
@@ -35,8 +35,8 @@ class RetAug:
                 ),
 
                 A.ColorJitter(brightness=0.2 , contrast=0.2 , saturation=0.2 , p=0.8),
-               A.CoarseDropout(max_holes=8, max_height=32, max_width=32, 
-                           fill_value=0, mask_fill_value=0, p=0.5),
+               A.CoarseDropout(num_holes_range=(1,8), hole_height_range=(12,32), hole_width_range=(12,32), 
+                           fill=0, fill_mask=0, p=0.5),
                 ToTensorV2()
             ]
         )
@@ -44,8 +44,9 @@ class RetAug:
         self.lesion_sim = A.Compose([
             A.OneOf([
                 A.ElasticTransform(alpha=50, sigma=7, alpha_affine=10, p=0.3),
-                A.RandomSizedCrop(min_max_height=(16, 32), height=img_size, 
-                                 width=img_size, p=0.3),
+                # A.RandomSizedCrop(min_max_height=(16, 32), height=img_size, 
+                #                  width=img_size, p=0.3),
+                A.RandomSizedCrop(min_max_height=(16,32) , size=(img_size , img_size) , w2h_ratio=1,mask_interpolation=0,p=0.3),
                 A.OpticalDistortion(distort_limit=0.5, shift_limit=0.5, p=0.4)
             ], p=0.5)
         ])
@@ -53,8 +54,12 @@ class RetAug:
 
     def __call__(self , image):
 
-        view1 = self.transform1(image)['image']
-        view2 = self.transform2(image)['image']
+        if not isinstance(image , np.ndarray):
+            image = np.array(image)
+
+
+        view1 = self.transform1(image=image)['image']
+        view2 = self.transform2(image=image)['image']
         view2 = self.lesion_sim(image=view2.permute(1,2,0).numpy())['image'].permute(2,0,1)
 
         return view1 , view2
@@ -97,9 +102,9 @@ class MaskedViT(nn.Module):
             ]
         )
 
-
+        self.mask_ratio = mask_ratio
         self.mask_token = nn.Parameter(torch.zeros(1 , 1 , embed_dim))
-
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         nn.init.normal_(self.mask_token , std=0.02)
 
         self.global_proj = nn.Sequential(
@@ -129,37 +134,51 @@ class MaskedViT(nn.Module):
 
         return mask.bool()
     
-    def forward(self , x , mask_ratio=0.4):
+    def forward(self, x, mask_ratio=0.4):
+    # Get batch size from the input image.
+        B = x.size(0)
         
-        B, N, D = x.shape
+        # Patch embedding: from [B, 3, 512, 512] to [B, embed_dim, 32, 32]
         x = self.patch_embed(x)
-        x = x.flatten(2).transpose(1,2)
-        x = x + self.pos_embed[: , 1: , :]
-
+        
+        # Flatten and transpose: now x is [B, num_patches, embed_dim] where num_patches = 1024.
+        x = x.flatten(2).transpose(1, 2)
+        
+        # Now extract the correct number of patches.
+        N = x.size(1)  # should be 1024 for a 512x512 image with 16x16 patches.
+        
+        # Add positional embedding (skip the class token position).
+        x = x + self.pos_embed[:, 1:, :]
+        
+        # Compute the mask (mask shape: [B, N]).
         mask = self.lesion_aware_masking(x)
-        mask_token = self.mask_token.expand(B , N ,-1)
-
-        x = x * (1 - mask.unsqueeze(-1)) + mask_token * mask.unsqueeze(-1)
-
-        cls_token = self.cls_token + self.pos_embed[: , :1 , :]
-        x = torch.cat((cls_token.expand(B , -1 , -1) , x) , dim=1)
-
-
+        
+        # Expand the mask token to match the number of patches.
+        mask_token = self.mask_token.expand(B, N, -1)
+        
+        # Use the mask (converted to float) to combine x and mask_token.
+        x = x * ((~mask).float().unsqueeze(-1)) + mask_token * mask.float().unsqueeze(-1)
+        
+        # If you have a class token (make sure self.cls_token is defined):
+        cls_token = self.cls_token + self.pos_embed[:, :1, :]
+        x = torch.cat((cls_token.expand(B, -1, -1), x), dim=1)
+        
+        # Process through transformer blocks.
         for blk in self.blocks:
             x = blk(x)
-
-
-        global_feat = self.global_proj(x[: , 0])
-        local_feat = self.local_proj(x[: , 1:])
-
-        return global_feat , local_feat , mask
+        
+        # Project global and local features.
+        global_feat = self.global_proj(x[:, 0])
+        local_feat = self.local_proj(x[:, 1:])
+        
+        return global_feat, local_feat, mask
     
 class CustomiBOT(nn.Module):
 
     def __init__(
             self,  
-            student,
-            teacher,
+            student=None,
+            teacher=None,
             embed_dim=768,
             temp=0.1,
             mask_ratio=0.4,
@@ -167,8 +186,8 @@ class CustomiBOT(nn.Module):
     ):
         super().__init__()
 
-        self.student = student
-        self.teacher = teacher
+        self.student = student if student is not None else MaskedViT()
+        self.teacher = teacher if student is not None else MaskedViT()
         self.momentum = momentum
         self.temp = temp
         self.mask_ratio = mask_ratio
