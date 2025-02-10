@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import Dataset , DataLoader , WeightedRandomSampler
 
 #util import 
-from data_pipeline.data_load import EyepacsGradingDataset , AptosGradingDataset , IdridGradingDataset , DdrGradingDataset
+from data_pipeline.data_load import EyepacsGradingDataset , AptosGradingDataset , IdridGradingDataset , DdrGradingDataset , MessdrGradingDataset
 import random
 from PIL import Image
 from typing import Tuple , List
@@ -63,6 +63,11 @@ class UnitedTrainingDataset(Dataset):
             idrid = IdridGradingDataset()
             idrid_train_img , idrid_train_labels = idrid.get_train_set()
             return idrid_train_img , idrid_train_labels
+        
+        elif dataset_name.lower() == "messdr":
+            messdr = MessdrGradingDataset()
+            messdr_train_img , messdr_train_label = messdr.get_train_set()
+            return messdr_train_img , messdr_train_label
 
     def get_paths(self) ->  List[float]:
         """
@@ -149,6 +154,11 @@ class UnitedValidationDataset(Dataset):
             idrid = IdridGradingDataset()
             idrid_valid_img , idrid_valid_labels = idrid.get_valid_set()
             return idrid_valid_img , idrid_valid_labels
+        
+        elif dataset_name.lower() == "messdr":
+            messdr = MessdrGradingDataset()
+            messdr_valid_img , messdr_valid_label = messdr.get_valid_set()
+            return messdr_valid_img , messdr_valid_label
     def get_paths(self) -> list:
         """
         To get combined path of all images of given dataset and corresponding labels

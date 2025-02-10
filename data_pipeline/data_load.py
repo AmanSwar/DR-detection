@@ -273,8 +273,70 @@ class IdridGradingDataset(GradingDataset):
     
 
 
+class MessdrGradingDataset(GradingDataset):
 
+    def __init__(self , dataset_path="data/mesdr"):
+        self.dataset_path = dataset_path
+        self.all_imgs = self._get_img_list(subset="all")
+        self._train_image = self._get_img_list("train")
+        self._valid_image = self._get_img_list("valid")
+        self._test_image = self._get_img_list("test")
+
+        self._train_label = self._get_labels("train")
+        self._valid_label = self._get_labels("valid")
+        self._test_label = self._get_labels("test")
+
+    def _get_img_list(self, subset):
+
+        if subset == "all":
+            img_dir = os.path.join(self.dataset_path , "images")
+
+            img_name = os.listdir(img_dir)
+
+            add_path(img_name_list=img_name , path=img_dir)
+
+            return img_name
         
+        if subset == "train":
+            num = int(len(self.all_imgs) * 0.7)
+            return self.all_imgs[:num]
+
+
+        if subset == "valid":
+            num = int(len(self.all_imgs) * 0.9)
+            train_num = int(len(self.all_imgs) * 0.7)
+
+            return self.all_imgs[train_num : num]
+        
+        if subset == "test":
+            num = int(len(self.all_imgs) * 0.9)
+            return self.all_imgs[num : ]
+        
+
+    
+    def _get_labels(self, subset):
+        label_dir = os.path.join(self.dataset_path , "messidor_data.csv")
+
+        temp_df = pd.read_csv(label_dir)
+
+        label_dic = {img_name : label for img_name , label in zip(temp_df['id_code']  , temp_df['diagnosis'])}
+        #get original image
+        label_inorder = []
+        if subset == "train":
+            for img_name in self._train_image:
+                label_inorder.append(label_dic[img_name.split('/')[-1]])
+
+        if subset == "test":
+            for img_name in self._test_image:
+                label_inorder.append(label_dic[img_name.split('/')[-1]])
+
+        if subset == "valid":
+            for img_name in self._valid_image:
+                label_inorder.append(label_dic[img_name.split('/')[-1]])
+
+        return label_inorder
+    
+
 
 
 
