@@ -4,7 +4,8 @@ from torch.utils.data import DataLoader ,WeightedRandomSampler
 from collections import Counter
 import numpy as np
 
-from data_pipeline.data_set import UnitedTrainingDataset , UnitedValidationDataset , UniformTrainDataloader
+from data_pipeline.data_set import UnitedTrainingDataset , UnitedValidationDataset , UniformTrainDataloader , UnitedSSLTrainingDataset
+from data_pipeline.data_set import SSLTrainLoader
 from data_pipeline.data_aug import IJEPAAugmentation , DINOAugmentation
 
 
@@ -47,23 +48,32 @@ BATCH_SIZE = 32
 # all_valid_data_loader = DataLoader(dataset=all_validation_set ,sampler=sampler ,batch_size=BATCH_SIZE , pin_memory=True , num_workers=0)
 
 dataset_names = ["eyepacs" , "aptos" , "ddr" , "idrid"]
-uniform_data_ld = UniformTrainDataloader(
-    dataset_names=dataset_names,
-    transformation=IJEPAAugmentation(),
-    batch_size=BATCH_SIZE,
-    num_workers=2,
-    sampler=True
-)
+# uniform_data_ld = UniformTrainDataloader(
+#     dataset_names=dataset_names,
+#     transformation=IJEPAAugmentation(),
+#     batch_size=BATCH_SIZE,
+#     num_workers=2,
+#     sampler=True
+# )
 
-data_ld = uniform_data_ld.get_loader()
+# data_ld = uniform_data_ld.get_loader()
 
-for img , label in data_ld:
-    print(img)
-    print(label)
-    print("\n")
+# # for img , label in data_ld:
+# #     print(img)
+# #     print(label)
+# #     print("\n")
+
+train_ds = UnitedSSLTrainingDataset("eyepacs" , "aptos" , "ddr" , "idrid" , "messdr")
+
+print(len(train_ds))
 
 
+# ssl_train_ld = SSLTrainLoader(dataset_names=dataset_names , transformation=IJEPAAugmentation() , batch_size=8 , num_work=2)
 
+# data_ld = ssl_train_ld.get_loader()
+# for img in data_ld:
+#     print(img)
+#     print("\n")
 
 
 
