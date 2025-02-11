@@ -230,7 +230,6 @@ class UniformTrainDataloader:
     
 
 
-
 class UnitedSSLTrainingDataset(Dataset):
 
     def __init__(self , *args ,transformation=None , img_size=1024):
@@ -410,10 +409,38 @@ class SSLTrainLoader:
         self.num_workers = num_work
         training_dataset = UnitedSSLTrainingDataset(*self.dataset_names , transformation=self.transformation)
         
-        
-
         self.train_loader = DataLoader(dataset=training_dataset ,batch_size=self.batch_size , pin_memory=True , num_workers=self.num_workers)
     
     def get_loader(self):
         return self.train_loader
+    
+
+class SSLValidLoader:
+
+    def __init__(
+            self,
+            dataset_names,
+            transformation,
+            batch_size,
+            num_work,
+    ):
+        
+        self.dataset_names = dataset_names
+        self.transformation = transformation
+        self.batch_size = batch_size
+        self.num_workers = num_work
+        validation_dataset = UnitedSSLValidationDataset(
+            *self.dataset_names,
+            transformation=self.transformation
+        )
+
+        self.valid_loader = DataLoader(
+            dataset=validation_dataset,
+            batch_size=self.batch_size,
+            pin_memory=True,
+            num_workers=self.num_workers
+        )
+
+    def get_loader(self):
+        return self.valid_loader
     
