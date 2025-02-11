@@ -6,9 +6,165 @@ from typing import LiteralString
 from tqdm import tqdm
 import pandas as pd
 
-from data_pipeline.utils import add_path , GradingDataset
+from data_pipeline.utils import add_path , GradingDataset , SSLDataset
 
 base_path = "/"
+
+
+class EyepacsSSLDataset(SSLDataset):
+
+    def __init__(self , dataset_path="data/eyepacs"):
+        super().__init__(dataset_path)
+
+    def _get_train_img(self) -> list:
+        image_list = []
+        for subset in os.listdir(self.dataset_path):
+            subset_dir = os.path.join(self.dataset_path , subset)
+            img_dir = os.path.join(subset_dir , subset)
+            img_names = os.listdir(img_dir) 
+            add_path(img_name_list=img_names , path=img_dir)
+
+            image_list.extend(img_names)
+
+        return image_list
+    
+    def _get_valid_img(self):
+        len_train_img = int(len(self._train_imgs) * 0.8)
+
+        valid_subset = self._train_imgs[len_train_img : ]
+        return valid_subset
+    
+
+class AptosSSLDataset(SSLDataset):
+
+    def __init__(self, dataset_path="data/aptos"):
+        super().__init__(dataset_path)
+
+    def _get_train_img(self):
+        image_list = []
+        for sub_dir in os.listdir(self.dataset_path):
+            sub_path = os.path.join(self.dataset_path , sub_dir)
+            if os.path.isdir(sub_path):
+
+                img_names = os.listdir(sub_path)
+                add_path(img_name_list=img_names , path=sub_path)
+
+                image_list.extend(img_names)
+
+        return image_list
+
+    def _get_valid_img(self):
+        len_train_img = int(len(self._train_imgs) * 0.8)
+
+        valid_subset = self._train_imgs[len_train_img : ]
+        return valid_subset
+
+
+class DdrSSLDataset(SSLDataset):
+
+    def __init__(self, dataset_path):
+        super().__init__(dataset_path)
+        
+    def _get_train_img(self):
+        subset = "train"
+        for dirpath , dirnames , filenames  in os.walk(self.dataset_path):
+            if "DR_grading" in dirpath:
+                for dirs in dirnames:
+
+                    if dirs == subset:
+                        base_dir = dirpath
+                        img_path = os.path.join(dirpath , dirs)
+
+        if not img_path:
+            raise ValueError(f"Could not find {subset} directory in dataset")
+        
+        if not os.path.exists(img_path):
+            raise ValueError(f"Directory not found: {img_path}")
+        img_names = os.listdir(img_path)
+        
+        # add_path(img_name_list=img_names , path=base_dir)
+        full_paths = []
+        for img_name in img_names:
+            full_path = os.path.join(img_path, img_name)
+            if not os.path.exists(full_path):
+                print(f"Warning: Image not found: {full_path}")
+                continue
+            full_paths.append(full_path)
+    
+        return full_paths
+
+
+    def _get_valid_img(self):
+        subset = "valid"
+        for dirpath , dirnames , filenames  in os.walk(self.dataset_path):
+            if "DR_grading" in dirpath:
+                for dirs in dirnames:
+
+                    if dirs == subset:
+                        base_dir = dirpath
+                        img_path = os.path.join(dirpath , dirs)
+
+        if not img_path:
+            raise ValueError(f"Could not find {subset} directory in dataset")
+        
+        if not os.path.exists(img_path):
+            raise ValueError(f"Directory not found: {img_path}")
+        img_names = os.listdir(img_path)
+        
+        # add_path(img_name_list=img_names , path=base_dir)
+        full_paths = []
+        for img_name in img_names:
+            full_path = os.path.join(img_path, img_name)
+            if not os.path.exists(full_path):
+                print(f"Warning: Image not found: {full_path}")
+                continue
+            full_paths.append(full_path)
+    
+        return full_paths
+
+
+class IdridSSLDataset(SSLDataset):
+
+    def __init__(self, dataset_path = "data/idrid"):
+        super().__init__(dataset_path)
+
+    def _get_train_img(self):
+        grading_sub_path = os.path.join(self.dataset_path , "B. Disease Grading")
+        img_sub_path = os.path.join(grading_sub_path, "1. Original Images")
+        img_dir = os.path.join(img_sub_path , "a. Training Set")
+        all_img_name = os.listdir(img_dir)
+
+        add_path(img_name_list=all_img_name , path=img_dir)
+    
+        return all_img_name
+
+    def _get_valid_img(self):
+        len_train_img = int(len(self._train_imgs) * 0.8)
+
+        valid_subset = self._train_imgs[len_train_img : ]
+        return valid_subset
+        
+
+class MessdrSSLDataset(SSLDataset):
+
+    def __init__(self, dataset_path="data/mesdr"):
+        super().__init__(dataset_path)
+
+    def _get_train_img(self):
+        img_dir = os.path.join(self.dataset_path , "images")
+
+        img_name = os.listdir(img_dir)
+
+        add_path(img_name_list=img_name , path=img_dir)
+
+        return img_name
+    
+    def _get_valid_img(self):
+        len_train_img = int(len(self._train_imgs) * 0.8)
+
+        valid_subset = self._train_imgs[len_train_img : ]
+        return valid_subset
+
 class EyepacsGradingDataset(GradingDataset):
     """
     Creates list of image paths and corresponding labels

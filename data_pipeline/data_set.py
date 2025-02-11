@@ -4,6 +4,7 @@ from torch.utils.data import Dataset , DataLoader , WeightedRandomSampler
 
 #util import 
 from data_pipeline.data_load import EyepacsGradingDataset , AptosGradingDataset , IdridGradingDataset , DdrGradingDataset , MessdrGradingDataset
+from data_pipeline.data_load import EyepacsSSLDataset , AptosSSLDataset , IdridSSLDataset , DdrSSLDataset , MessdrSSLDataset
 import random
 from PIL import Image
 from typing import Tuple , List
@@ -36,7 +37,7 @@ class UnitedTrainingDataset(Dataset):
 
     def __getdata(self , dataset_name: str) -> Tuple[List[str] , List[int]]:
 
-        if dataset_name not in ["eyepacs" , "aptos" ,"ddr" , "idrid"]:
+        if dataset_name not in ["eyepacs" , "aptos" ,"ddr" , "idrid" , "messdr"]:
             raise ValueError(f"Unknown dataset {dataset_name}")
         
 
@@ -230,3 +231,189 @@ class UniformTrainDataloader:
 
 
 
+class UnitedSSLTrainingDataset(Dataset):
+
+    def __init__(self , *args ,transformation=None , img_size=1024):
+        self.args = args
+        self.image_path = []
+        self.transformation = transformation
+        self.img_size= img_size
+
+        for arg in args:
+            img_path = self.__getdata(arg)
+            self.image_path.extend(img_path)
+            
+
+        random.shuffle(self.image_path)
+
+
+    def __getdata(self , dataset_name):
+
+        if dataset_name not in ["eyepacs" , "aptos" ,"ddr" , "idrid" , "messdr"]:
+            raise ValueError(f"Unknown dataset {dataset_name}")
+        
+        elif dataset_name.lower() == "eyepacs":
+            eyepacs = EyepacsSSLDataset()
+            eyepacs_train_img = eyepacs.get_training()
+            
+            return eyepacs_train_img 
+
+        elif dataset_name.lower() == "aptos":
+            aptos = AptosSSLDataset()
+            aptos_train_img = aptos.get_training()
+            
+            return aptos_train_img 
+           
+
+        elif dataset_name.lower() == "ddr":
+            ddr = DdrSSLDataset(dataset_path="data/ddr")
+            ddr_train_img = ddr.get_training()
+            
+            return ddr_train_img 
+        
+        elif dataset_name.lower() == "idrid":
+            idrid = IdridSSLDataset()
+            idrid_train_img  = idrid.get_training()
+            return idrid_train_img
+        
+        elif dataset_name.lower() == "messdr":
+            messdr = MessdrSSLDataset()
+            messdr_train_img = messdr.get_training()
+            return messdr_train_img
+        
+    def get_paths(self) ->  List[float]:
+        """
+        To get combined path of all images of given dataset and corresponding labels
+        """
+
+        return self.image_path
+    
+    def __len__(self):
+        return len(self.image_path)
+    
+    def __getitem__(self, index):
+        
+        img_path = self.image_path[index]
+        
+
+        try:
+            img = Image.open(img_path)
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            img = np.array(img)
+            
+            if self.transformation is not None:
+                trans_img = self.transformation(img)
+                return trans_img
+
+            return img
+        except (IOError, FileNotFoundError) as e:
+            raise RuntimeError(f"Failed to load image {img_path}: {str(e)}")
+        except Exception as e:
+            raise RuntimeError(f"Unexpected error loading {img_path}: {str(e)}")
+        
+
+
+class UnitedSSLValidationDataset(Dataset):
+    def __init__(self , *args ,transformation=None , img_size=1024):
+        self.args = args
+        self.image_path = []
+        self.transformation = transformation
+        self.img_size= img_size
+
+        for arg in args:
+            img_path = self.__getdata(arg)
+            self.image_path.extend(img_path)
+            
+
+        random.shuffle(self.image_path)
+
+
+    def __getdata(self , dataset_name):
+
+        if dataset_name not in ["eyepacs" , "aptos" ,"ddr" , "idrid" , "messdr"]:
+            raise ValueError(f"Unknown dataset {dataset_name}")
+        
+        elif dataset_name.lower() == "eyepacs":
+            eyepacs = EyepacsSSLDataset()
+            eyepacs_train_img = eyepacs.get_validation()
+            
+            return eyepacs_train_img 
+
+        elif dataset_name.lower() == "aptos":
+            aptos = AptosSSLDataset()
+            aptos_train_img = aptos.get_validation()
+            
+            return aptos_train_img 
+           
+
+        elif dataset_name.lower() == "ddr":
+            ddr = DdrSSLDataset(root_dir="data/ddr")
+            ddr_train_img = ddr.get_validation()
+            
+            return ddr_train_img 
+        
+        elif dataset_name.lower() == "idrid":
+            idrid = IdridSSLDataset()
+            idrid_train_img  = idrid.get_training()
+            return idrid_train_img
+        
+        elif dataset_name.lower() == "messdr":
+            messdr = MessdrSSLDataset()
+            messdr_train_img = messdr.get_validation()
+            return messdr_train_img
+        
+    def get_paths(self) ->  List[float]:
+        """
+        To get combined path of all images of given dataset and corresponding labels
+        """
+
+        return self.image_path
+    
+    def __len__(self):
+        return len(self.image_path)
+    
+    def __getitem__(self, index):
+        
+        img_path = self.image_path[index]
+
+        try:
+            img = Image.open(img_path)
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            img = np.array(img)
+            
+            if self.transformation is not None:
+                trans_img = self.transformation(img)
+                return trans_img
+
+            return img 
+        except (IOError, FileNotFoundError) as e:
+            raise RuntimeError(f"Failed to load image {img_path}: {str(e)}")
+        except Exception as e:
+            raise RuntimeError(f"Unexpected error loading {img_path}: {str(e)}")
+
+
+class SSLTrainLoader:
+
+    def __init__(
+            self,
+            dataset_names,
+            transformation,
+            batch_size,
+            num_work,
+    ):
+        
+        self.dataset_names = dataset_names
+        self.transformation = transformation
+        self.batch_size = batch_size
+        self.num_workers = num_work
+        training_dataset = UnitedSSLTrainingDataset(*self.dataset_names , transformation=self.transformation)
+        
+        
+
+        self.train_loader = DataLoader(dataset=training_dataset ,batch_size=self.batch_size , pin_memory=True , num_workers=self.num_workers)
+    
+    def get_loader(self):
+        return self.train_loader
+    

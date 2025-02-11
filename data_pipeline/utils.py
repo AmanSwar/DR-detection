@@ -24,10 +24,11 @@ class GradingDataset():
         self._train_label = self._get_labels("train")
         self._test_label = self._get_labels("test")
 
-        self._valid_image = self._train_image[len(self._train_image) * 8 :]
-        self._train_image = self._train_image[:len(self._train_image) * 8]
-        self._valid_label = self._train_label[len(self._train_label) * 8 : ]
-        self._train_label = self._train_label[:len(self._train_image) * 8]
+        self._train_len = int(len(self._train_image) * 8)
+        self._valid_image = self._train_image[self._train_len: ]
+        self._train_image = self._train_image[:self._train_len]
+        self._valid_label = self._train_label[self._train_len : ]
+        self._train_label = self._train_label[:self._train_len]
 
 
     def _get_img_list(self , subset: LiteralString) -> list:
@@ -62,3 +63,30 @@ class GradingDataset():
         Test images and labels
         """
         return self._test_image , self._test_label
+    
+
+class SSLDataset:
+
+    def __init__(self , dataset_path):
+
+        self.dataset_path = dataset_path
+        self._train_imgs = self._get_train_img()
+        self._valid_imgs = self._get_valid_img()
+
+    def _get_train_img(self):
+        pass
+
+    def _get_valid_img(self):
+        pass
+
+    def get_training(self):
+        return self._train_imgs
+
+    def get_validation(self):
+        return self._valid_imgs
+
+
+
+
+
+
