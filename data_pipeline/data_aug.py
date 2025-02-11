@@ -13,8 +13,7 @@ import numpy as np
 from tqdm import tqdm
 import os
 import random
-
-
+from scipy.ndimage import gaussian_filter, map_coordinates
 
 class DINOAugmentation:
     def __init__(self ,
@@ -143,7 +142,7 @@ class IJEPAAugmentation:
 
     def __call__(self, image):
         trans_img =  self.transform(image=image)['image']
-        return trans_img.float() / 255.0
+        return trans_img.float()
 
 class RandomRotate90:
     def __call__(self, img):
@@ -213,11 +212,10 @@ class RandomChoiceWithProbs:
         return chosen(x)
 
 # Main Augmentation Module
-class RetAug:
+class IbotRetAug:
     def __init__(self, img_size=512):
         self.img_size = img_size
 
-        # Base augmentations on the PIL image (geometric, flip, rotation)
         self.base_transforms = transforms.Compose([
             transforms.Resize((img_size, img_size)),
             transforms.RandomHorizontalFlip(p=0.5),
@@ -225,17 +223,16 @@ class RetAug:
             RandomRotate90()
         ])
 
-        # View 1: basic augmentations then conversion to tensor.
+        
         self.transform1 = transforms.Compose([
             self.base_transforms,
             transforms.ToTensor()
         ])
 
-        # Lesion simulation – note: these transforms operate on PIL images.
+     
         self.lesion_sim = transforms.RandomApply([
             RandomChoiceWithProbs(
                 transforms=[
-                    # Make sure your torchvision version supports these on PIL images.
                     transforms.ElasticTransform(alpha=50.0, sigma=7.0),
                     transforms.RandomResizedCrop(
                         size=(img_size, img_size),
@@ -248,8 +245,7 @@ class RetAug:
             )
         ], p=0.5)
 
-        # View 2: first apply base transforms, then lesion simulation (still on PIL),
-        # then convert to tensor and apply additional pixel-level augmentations.
+        
         self.transform2 = transforms.Compose([
             self.base_transforms,
             self.lesion_sim,        # Apply lesion simulation on PIL image.
@@ -280,4 +276,239 @@ class RetAug:
 
         view1 = self.transform1(image)
         view2 = self.transform2(image)
+        return view1, view2
+    
+
+class RandomRotate90(object):
+    """Rotate the PIL image by a random multiple of 90 degrees with probability p."""
+    def __init__(self, p=0.5):
+        self.p = p
+
+    def __call__(self, img):
+        if random.random() < self.p:
+            # Choose 90, 180, or 270 degrees (using transpose to avoid interpolation)
+            k = random.choice([1, 2, 3])
+            for _ in range(k):
+                img = img.transpose(Image.ROTATE_90)
+        return img
+
+class GaussianBlurTransform(object):
+    """
+    Apply Gaussian blur with a randomly chosen kernel size.
+    The kernel size is chosen as an odd integer between blur_limit[0] and blur_limit[1].
+    """
+    def __init__(self, blur_limit=(3, 7)):
+        self.blur_limit = blur_limit
+
+    def __call__(self, img):
+        # Choose an odd kernel size
+        possible_kernels = [k for k in range(self.blur_limit[0], self.blur_limit[1]+1) if k % 2 == 1]
+        kernel_size = random.choice(possible_kernels)
+        # Choose a random sigma (you can tune this range)
+        sigma = random.uniform(0.1, 2.0)
+        # You can either use the built-in torchvision GaussianBlur (if available)
+        # or use a PIL filter:
+        return img.filter(ImageFilter.GaussianBlur(radius=sigma))
+        # Alternatively, if you prefer torchvision’s transform (requires kernel_size):
+        # return transforms.GaussianBlur(kernel_size=kernel_size, sigma=(sigma, sigma))(img)
+
+class GaussNoiseTransform(object):
+    """
+    Add random Gaussian noise.
+    The variance is randomly chosen from var_limit.
+    """
+    def __init__(self, var_limit=(10.0, 50.0)):
+        self.var_limit = var_limit
+
+    def __call__(self, img):
+        # Convert PIL image to numpy array
+        np_img = np.array(img).astype(np.float32)
+        var = random.uniform(self.var_limit[0], self.var_limit[1])
+        std = var ** 0.5
+        noise = np.random.normal(0, std, np_img.shape)
+        np_img = np_img + noise
+        np_img = np.clip(np_img, 0, 255).astype(np.uint8)
+        return Image.fromarray(np_img)
+
+class ElasticTransform(object):
+    """
+    Apply an elastic deformation on the image.
+    (This implementation uses OpenCV and SciPy.)
+    """
+    def __init__(self, alpha=50, sigma=7, alpha_affine=10):
+        self.alpha = alpha
+        self.sigma = sigma
+        self.alpha_affine = alpha_affine
+
+    def __call__(self, img):
+        np_img = np.array(img)
+        shape = np_img.shape[:2]
+
+        # Random affine
+        center_square = np.float32(shape) // 2
+        square_size = min(shape) // 3
+        pts1 = np.float32([
+            [center_square[1] + square_size, center_square[0] + square_size],
+            [center_square[1] - square_size, center_square[0] + square_size],
+            [center_square[1], center_square[0] - square_size]
+        ])
+        pts2 = pts1 + np.random.uniform(-self.alpha_affine, self.alpha_affine, size=pts1.shape).astype(np.float32)
+        M = cv2.getAffineTransform(pts1, pts2)
+        np_img = cv2.warpAffine(np_img, M, (shape[1], shape[0]), borderMode=cv2.BORDER_REFLECT_101)
+
+        # Elastic deformation
+        dx = gaussian_filter((np.random.rand(*shape) * 2 - 1), self.sigma) * self.alpha
+        dy = gaussian_filter((np.random.rand(*shape) * 2 - 1), self.sigma) * self.alpha
+
+        x, y = np.meshgrid(np.arange(shape[1]), np.arange(shape[0]))
+        indices = np.reshape(y + dy, (-1, 1)), np.reshape(x + dx, (-1, 1))
+        # map_coordinates expects each channel separately if image is multichannel
+        if np_img.ndim == 3:
+            channels = []
+            for d in range(np_img.shape[2]):
+                channel = map_coordinates(np_img[..., d], indices, order=1, mode='reflect').reshape(shape)
+                channels.append(channel)
+            np_img = np.stack(channels, axis=-1)
+        else:
+            np_img = map_coordinates(np_img, indices, order=1, mode='reflect').reshape(shape)
+
+        return Image.fromarray(np_img.astype(np.uint8))
+
+class OpticalDistortion(object):
+    """
+    Apply optical distortion to the image.
+    """
+    def __init__(self, distort_limit=0.5, shift_limit=0.5):
+        self.distort_limit = distort_limit
+        self.shift_limit = shift_limit
+
+    def __call__(self, img):
+        np_img = np.array(img)
+        height, width = np_img.shape[:2]
+
+        # Create meshgrid
+        x, y = np.meshgrid(np.arange(width), np.arange(height))
+        x = x.astype(np.float32)
+        y = y.astype(np.float32)
+
+        # Determine distortion factors
+        center_x = width / 2
+        center_y = height / 2
+        # shift factors
+        shift_x = random.uniform(-self.shift_limit, self.shift_limit) * width
+        shift_y = random.uniform(-self.shift_limit, self.shift_limit) * height
+        # distort factors
+        distort_x = random.uniform(-self.distort_limit, self.distort_limit)
+        distort_y = random.uniform(-self.distort_limit, self.distort_limit)
+
+        # Apply distortions: shift pixels proportionally to their distance from center
+        x_distort = x + (x - center_x) * distort_x + shift_x
+        y_distort = y + (y - center_y) * distort_y + shift_y
+
+        map_x = x_distort.astype(np.float32)
+        map_y = y_distort.astype(np.float32)
+        np_img = cv2.remap(np_img, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101)
+        return Image.fromarray(np_img)
+
+class RandomSizedCrop(object):
+    """
+    Randomly crop a square patch with a height randomly chosen between
+    min_max_height[0] and min_max_height[1], then resize it to the given size.
+    """
+    def __init__(self, min_max_height=(32, 64), size=(1024, 1024)):
+        self.min_max_height = min_max_height
+        self.size = size
+
+    def __call__(self, img):
+        width, height = img.size  # PIL gives (width, height)
+        crop_size = random.randint(self.min_max_height[0], min(self.min_max_height[1], height, width))
+        if width < crop_size or height < crop_size:
+            return img
+        left = random.randint(0, width - crop_size)
+        top = random.randint(0, height - crop_size)
+        img_cropped = img.crop((left, top, left + crop_size, top + crop_size))
+        return img_cropped.resize(self.size, Image.BILINEAR)
+
+class CoarseDropout(object):
+    """
+    Randomly set rectangular regions in the image to a constant fill value.
+    """
+    def __init__(self, max_holes=8, max_height=32, max_width=32, fill_value=0, p=0.5):
+        self.max_holes = max_holes
+        self.max_height = max_height
+        self.max_width = max_width
+        self.fill_value = fill_value
+        self.p = p
+
+    def __call__(self, img):
+        if random.random() > self.p:
+            return img
+
+        np_img = np.array(img)
+        h, w = np_img.shape[:2]
+        n_holes = random.randint(1, self.max_holes)
+        for _ in range(n_holes):
+            hole_height = random.randint(1, self.max_height)
+            hole_width = random.randint(1, self.max_width)
+            y = random.randint(0, h - hole_height)
+            x = random.randint(0, w - hole_width)
+            if np_img.ndim == 3:
+                np_img[y:y+hole_height, x:x+hole_width, :] = self.fill_value
+            else:
+                np_img[y:y+hole_height, x:x+hole_width] = self.fill_value
+        return Image.fromarray(np_img)
+
+
+
+class DinowregAug:
+    def __init__(self, img_size=1024):
+        # View 1 pipeline (mimicking the Albumentations view1)
+        self.view1_transform = transforms.Compose([
+            transforms.Resize((img_size, img_size)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomVerticalFlip(p=0.5),
+            RandomRotate90(p=0.5),
+            transforms.RandomApply([
+                transforms.RandomChoice([
+                    GaussianBlurTransform(blur_limit=(3, 7)),
+                    GaussNoiseTransform(var_limit=(10.0, 50.0))
+                ])
+            ], p=0.4),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2,
+                                   saturation=0.2, hue=0.1),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225]),
+        ])
+
+        # View 2 pipeline (lesion-focused augmentation)
+        self.view2_transform = transforms.Compose([
+            transforms.Resize((img_size, img_size)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomVerticalFlip(p=0.5),
+            RandomRotate90(p=0.5),
+            transforms.RandomApply([
+                transforms.RandomChoice([
+                    ElasticTransform(alpha=50, sigma=7, alpha_affine=10),
+                    OpticalDistortion(distort_limit=0.5, shift_limit=0.5),
+                    RandomSizedCrop(min_max_height=(32, 64), size=(img_size, img_size))
+                ])
+            ], p=0.5),
+            CoarseDropout(max_holes=8, max_height=32, max_width=32,
+                          fill_value=0, p=0.5),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225]),
+        ])
+
+    def __call__(self, image):
+        # If the input image is a torch.Tensor, convert it to a PIL Image.
+        if isinstance(image, torch.Tensor):
+            # If in CHW format assume 3 channels.
+            if image.dim() == 3 and image.shape[0] == 3:
+                image = transforms.ToPILImage()(image)
+            else:
+                image = transforms.ToPILImage()(image)
+        view1 = self.view1_transform(image)
+        view2 = self.view2_transform(image)
         return view1, view2
