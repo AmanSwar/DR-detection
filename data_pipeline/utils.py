@@ -1,7 +1,7 @@
 import os
 from tqdm import tqdm 
 from typing import LiteralString
-
+import torch
 def add_path(img_name_list: list , path: os.path):
     """
     Combines the complete path to each of the images in a image folder
@@ -85,7 +85,27 @@ class SSLDataset:
     def get_validation(self):
         return self._valid_imgs
 
-
+class MemoryEfficientBatchSampler:
+    def __init__(
+            self, 
+            dataset, 
+            batch_size, 
+            shuffle=True
+            ):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.gradient_accumulation_steps = 4
+        
+    def __iter__(self):
+        if self.shuffle:
+            indices = torch.randperm(len(self.dataset))
+        else:
+            indices = torch.arange(len(self.dataset))
+            
+        mini_batch_size = self.batch_size // self.gradient_accumulation_steps
+        for i in range(0, len(indices), mini_batch_size):
+            yield indices[i:i + mini_batch_size]
 
 
 
