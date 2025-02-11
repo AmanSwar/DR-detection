@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import transforms
 from einops import rearrange
+from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 
 import wandb
 from tqdm import tqdm
@@ -22,7 +24,7 @@ class PatchEmbedding(nn.Module):
         )
 
     def forward(self, x):
-        x = self.proj(x)  # (B, C, H', W')
+        x = self.proj(x)  
         x = rearrange(x, 'b c h w -> b (h w) c')
         return x
     
@@ -125,7 +127,7 @@ class IJEPA(nn.Module):
             target_param.data.mul_(momentum).add_((1 - momentum) * context_param.data)
 
     
-    def get_random_boxes(self , batch_size , n_boxes = 4):
+    def get_random_boxes(self , batch_size , n_boxes = 6):
         """Generate random target boxes for masked prediction"""
         boxes = []
         for _ in range(batch_size):
@@ -358,7 +360,7 @@ if __name__ == "__main__":
     print("Hii I am here")
     BATCH_SIZE = 64
     from data_pipeline import data_set , data_aug
-    dataset_names = ["eyepacs" , "aptos" , "ddr" , "idrid"]
+    dataset_names = ["eyepacs" , "aptos" , "ddr" , "idrid","messdr"]
     uniform_data_ld = data_set.UniformTrainDataloader(
         dataset_names=dataset_names,
         transformation=data_aug.IJEPAAugmentation(),

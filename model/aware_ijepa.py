@@ -3,88 +3,29 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import transforms
 from einops import rearrange
-import numpy as np
 from torch.cuda.amp import autocast, GradScaler
-import albumentations as A
 
 
 from model.DRijepa import DRIjepa
 from PIL import Image
 
+import pytorch_lightning as pl
+import torch
+import torch.nn.functional as F
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR
+from torch.optim import AdamW
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.strategies import DDPStrategy
+from torch.cuda.amp import autocast
 
-class DRSpecificAugmentation:
-    def __init__(self):
-        self.transform = A.Compose([
-            A.CLAHE(clip_limit=2),
-            A.RandomBrightnessContrast(
-                brightness_limit=0.1, 
-                contrast_limit=0.1, 
-                p=0.5
-            ),
-            A.OneOf([
-                # lightning
-                A.GaussNoise(var_limit=(10.0, 50.0), p=0.5),
-                A.MultiplicativeNoise(multiplier=(0.95, 1.05), p=0.5),
-            ], p=0.3),
-            A.OneOf([
 
-                A.GaussianBlur(blur_limit=(3, 5), p=0.3),
-                A.MedianBlur(blur_limit=3, p=0.3),
-            ], p=0.2),
-            # Lesion-focused augmentations
-            A.OneOf([
-                A.Sharpen(alpha=(0.2, 0.5), lightness=(0.5, 1.0), p=0.5),
-                A.UnsharpMask(blur_limit=(3, 7), p=0.5),
-            ], p=0.3),
-            # Color augmentations for different camera settings
-            A.HueSaturationValue(
-                hue_shift_limit=5,
-                sat_shift_limit=10,
-                val_shift_limit=5,
-                p=0.3
-            ),
-            # Preserve circular FOV
-            A.CoarseDropout(
-                max_holes=8,
-                max_height=32,
-                max_width=32,
-                min_holes=1,
-                min_height=8,
-                min_width=8,
-                fill_value=0,
-                mask_fill_value=0,
-                p=0.2
-            ),
-        ])
 
-    
-
-    def __call__(self, image):
-        image = np.array(image)  # Ensure input is numpy array
-        augmented = self.transform(image=image)
-        return Image.fromarray(augmented['image'])
-
-class MemoryEfficientBatchSampler:
-    def __init__(self, dataset, batch_size, shuffle=True):
-        self.dataset = dataset
-        self.batch_size = batch_size
-        self.shuffle = shuffle
-        self.gradient_accumulation_steps = 4
-        
-    def __iter__(self):
-        if self.shuffle:
-            indices = torch.randperm(len(self.dataset))
-        else:
-            indices = torch.arange(len(self.dataset))
-            
-        mini_batch_size = self.batch_size // self.gradient_accumulation_steps
-        for i in range(0, len(indices), mini_batch_size):
-            yield indices[i:i + mini_batch_size]
 
 class DRLesionAttention(nn.Module):
     """Attention module specifically designed for DR lesions"""
     def __init__(self, dim):
         super().__init__()
+
         self.scale = dim ** -0.5
         self.lesion_queries = nn.Parameter(torch.randn(1, 5, dim)) 
         self.to_qkv = nn.Linear(dim, dim * 3, bias=False)
@@ -92,9 +33,10 @@ class DRLesionAttention(nn.Module):
     def forward(self, x):
         b, n, d = x.shape
         qkv = self.to_qkv(x).chunk(3, dim=-1)
+        # no op
         q, k, v = map(lambda t: rearrange(t, 'b n d -> b n d'), qkv)
         
-        # Add lesion-specific queries
+        
         lesion_queries = self.lesion_queries.repeat(b, 1, 1)
         q = torch.cat([q, lesion_queries], dim=1)
         
@@ -108,10 +50,10 @@ class DRSpecificIJEPA(DRIjepa):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-        # Add DR-specific components
+        
         self.lesion_attention = DRLesionAttention(kwargs.get('embed_dim', 1024))
         
-        # Add lesion-specific prediction heads
+        
         self.lesion_heads = nn.ModuleDict({
             'microaneurysms': nn.Linear(kwargs.get('embed_dim', 1024), 1),
             'hemorrhages': nn.Linear(kwargs.get('embed_dim', 1024), 1),
@@ -157,17 +99,14 @@ class DRTrainer:
         self.model.train()
         total_loss = 0
         
-        # Split batch for gradient accumulation
         micro_batches = torch.chunk(batch, self.grad_accumulation_steps)
         
         for i, micro_batch in enumerate(micro_batches):
             with autocast(enabled=self.mixed_precision):
                 features, target_features, lesion_preds = self.model(micro_batch)
                 
-                # Compute main I-JEPA loss
                 main_loss = self.criterion(features, target_features)
                 
-                # Compute lesion prediction loss if labels are provided
                 lesion_loss = 0
                 if lesion_labels is not None:
                     for name, pred in lesion_preds.items():
@@ -186,33 +125,14 @@ class DRTrainer:
             
             total_loss += loss.item()
         
-        # Update weights
         if self.mixed_precision:
             self.scaler.step(self.optimizer)
             self.scaler.update()
         else:
             self.optimizer.step()
-            
         self.optimizer.zero_grad()
-        
         return total_loss / self.grad_accumulation_steps
 
-def create_dr_specific_transforms(img_size=2048):
-    """Create DR-specific image transformations"""
-    train_transforms = transforms.Compose([
-        transforms.Resize((img_size, img_size)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        DRSpecificAugmentation(),
-    ])
-    
-    val_transforms = transforms.Compose([
-        transforms.Resize((img_size, img_size)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
-    
-    return train_transforms, val_transforms
 
 
 def train_dr_model(
@@ -273,3 +193,236 @@ def train_dr_model(
 
 
 
+class DRIJEPALightning(pl.LightningModule):
+    def __init__(
+        self,
+        img_size=2048,
+        patch_size=32,
+        in_chan=3,
+        embed_dim=1024,
+        encoder_depth=12,
+        pred_depth=4,
+        num_heads=16,
+        mlp_ratio=4,
+        dropout=0.1,
+        learning_rate=1.5e-4,
+        weight_decay=0.05,
+        warmup_epochs=5,
+        max_epochs=50,
+        batch_size=32,
+        lesion_loss_weight=0.5
+    ):
+        super().__init__()
+        self.save_hyperparameters()
+        
+        # Initialize DR-specific IJEPA model
+        self.model = DRSpecificIJEPA(
+            img_size=img_size,
+            patch_size=patch_size,
+            in_chan=in_chan,
+            embed_dim=embed_dim,
+            encoder_depth=encoder_depth,
+            pred_depth=pred_depth,
+            num_heads=num_heads,
+            mlp_ratio=mlp_ratio,
+            drop=dropout
+        )
+        
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
+        self.warmup_epochs = warmup_epochs
+        self.max_epochs = max_epochs
+        self.batch_size = batch_size
+        self.lesion_loss_weight = lesion_loss_weight
+
+    def training_step(self, batch, batch_idx):
+        images, lesion_labels = batch
+        boxes = self.model.get_random_boxes(images.shape[0])
+        
+        # Forward pass with mixed precision
+        with autocast():
+            features, target_features, lesion_preds = self.model(images, boxes)
+            
+     
+            main_loss = F.mse_loss(features, target_features)
+            
+            # Lesion detection loss
+            lesion_loss = 0
+            if lesion_labels is not None:
+                for name, pred in lesion_preds.items():
+                    if name in lesion_labels:
+                        lesion_loss += F.binary_cross_entropy_with_logits(
+                            pred,
+                            lesion_labels[name]
+                        )
+            
+            # Combined loss
+            total_loss = main_loss + self.lesion_loss_weight * lesion_loss
+        
+        # Log losses
+        self.log('train_main_loss', main_loss, on_step=True, on_epoch=True, prog_bar=True, sync_dist=True)
+        self.log('train_lesion_loss', lesion_loss, on_step=True, on_epoch=True, prog_bar=True, sync_dist=True)
+        self.log('train_total_loss', total_loss, on_step=True, on_epoch=True, prog_bar=True, sync_dist=True)
+        
+        # Update target encoder with momentum
+        self.model.momentum_update(
+            self.model.target_encoder,
+            self.model.context_encoder,
+            momentum=0.9996
+        )
+        
+        return total_loss
+
+    def validation_step(self, batch, batch_idx):
+        images, lesion_labels = batch
+        boxes = self.model.get_random_boxes(images.shape[0])
+        
+        features, target_features, lesion_preds = self.model(images, boxes)
+        
+        # Calculate losses
+        main_loss = F.mse_loss(features, target_features)
+        
+        lesion_loss = 0
+        if lesion_labels is not None:
+            for name, pred in lesion_preds.items():
+                if name in lesion_labels:
+                    lesion_loss += F.binary_cross_entropy_with_logits(
+                        pred,
+                        lesion_labels[name]
+                    )
+        
+        total_loss = main_loss + self.lesion_loss_weight * lesion_loss
+        
+        # Log validation metrics
+        self.log('val_main_loss', main_loss, on_epoch=True, sync_dist=True)
+        self.log('val_lesion_loss', lesion_loss, on_epoch=True, sync_dist=True)
+        self.log('val_total_loss', total_loss, on_epoch=True, sync_dist=True)
+        
+        return total_loss
+
+    def configure_optimizers(self):
+        # Separate parameters for weight decay
+        decay = set()
+        no_decay = set()
+        whitelist_weight_modules = (torch.nn.Linear, torch.nn.Conv2d)
+        blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.BatchNorm2d)
+        
+        for mn, m in self.named_modules():
+            for pn, p in m.named_parameters():
+                fpn = f"{mn}.{pn}" if mn else pn
+                
+                if pn.endswith('bias'):
+                    no_decay.add(fpn)
+                elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):
+                    decay.add(fpn)
+                elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
+                    no_decay.add(fpn)
+
+        param_dict = {pn: p for pn, p in self.named_parameters()}
+        optim_groups = [
+            {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": self.weight_decay},
+            {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
+        ]
+
+        optimizer = AdamW(
+            optim_groups,
+            lr=self.learning_rate * (self.batch_size / 256),
+            betas=(0.9, 0.95)
+        )
+
+        # Cosine learning rate schedule with warmup
+        main_scheduler = CosineAnnealingLR(
+            optimizer,
+            T_max=self.max_epochs - self.warmup_epochs,
+            eta_min=1e-6
+        )
+        
+        if self.warmup_epochs > 0:
+            warmup_scheduler = LinearLR(
+                optimizer,
+                start_factor=0.01,
+                end_factor=1.0,
+                total_iters=self.warmup_epochs
+            )
+            
+            scheduler = {
+                'scheduler': torch.optim.lr_scheduler.SequentialLR(
+                    optimizer,
+                    schedulers=[warmup_scheduler, main_scheduler],
+                    milestones=[self.warmup_epochs]
+                ),
+                'interval': 'epoch',
+                'frequency': 1
+            }
+        else:
+            scheduler = {
+                'scheduler': main_scheduler,
+                'interval': 'epoch',
+                'frequency': 1
+            }
+
+        return [optimizer], [scheduler]
+
+def main():
+    # Dataset setup with DR-specific augmentations
+    train_transform, val_transform = create_dr_specific_transforms()
+    
+    from data_pipeline import data_set , data_aug
+    dataset_names = ["eyepacs" , "aptos" , "ddr" , "idrid"]
+    uniform_training_data_ld = data_set.SSLTrainLoader(
+        dataset_names=dataset_names,
+        transformation=data_aug.IJEPAAugmentation(),
+        batch_size=32,
+        num_work=4,
+    )
+
+    train_data_ld = uniform_training_data_ld.get_loader()
+    
+    uniform_validation_data_ld = data_set.SSLValidLoader(
+        dataset_names=dataset_names,
+        transformation=None,
+        batch_size=32,
+        num_work=4,
+    )
+
+    valid_data_ld = uniform_validation_data_ld.get_loader()
+
+
+    # Initialize model
+    model = DRIJEPALightning(
+        img_size=2048,
+        batch_size=32,
+        max_epochs=50
+    )
+
+    # Callbacks
+    callbacks = [
+        ModelCheckpoint(
+            dirpath='checkpoints',
+            filename='dr-ijepa-{epoch:02d}-{val_total_loss:.3f}',
+            save_top_k=3,
+            monitor='val_total_loss',
+            mode='min'
+        ),
+        LearningRateMonitor(logging_interval='step')
+    ]
+
+    # Trainer setup
+    trainer = pl.Trainer(
+        accelerator='gpu',
+        devices=2,  # Adjust based on available GPUs
+        strategy=DDPStrategy(find_unused_parameters=False),
+        max_epochs=50,
+        precision=16,  # Mixed precision training
+        callbacks=callbacks,
+        gradient_clip_val=3.0,
+        accumulate_grad_batches=4,  # Gradient accumulation
+        log_every_n_steps=50,
+        sync_batchnorm=True
+    )
+
+    # Train
+    trainer.fit(model, train_data_ld, valid_data_ld)
+
+if __name__ == "__main__":
+    main()

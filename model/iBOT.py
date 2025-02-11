@@ -6,63 +6,10 @@ import numpy as np
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from torchvision.transforms import RandomApply
+import pytorch_lightning as pl
 
-class RetAug:
-    def __init__(self , img_size=512):
-
-        self.transform1 = A.Compose(
-            [
-                A.Resize(img_size , img_size),
-                A.HorizontalFlip(p=0.5),
-                A.VerticalFlip(p=0.5),
-                A.RandomRotate90(p=0.5),
-                ToTensorV2()
-            ]
-        )
-
-        self.transform2 = A.Compose(
-            [
-                A.Resize(img_size , img_size),
-                A.HorizontalFlip(p=0.5),
-                A.VerticalFlip(p=0.5),
-                A.RandomRotate90(p=0.5),
-                A.OneOf(
-                    [
-                        A.GaussianBlur(blur_limit=(3,7)),
-                        A.GaussNoise(),
-                    ],
-                    p=0.5
-                ),
-
-                A.ColorJitter(brightness=0.2 , contrast=0.2 , saturation=0.2 , p=0.8),
-               A.CoarseDropout(num_holes_range=(1,8), hole_height_range=(12,32), hole_width_range=(12,32), 
-                           fill=0, fill_mask=0, p=0.5),
-                ToTensorV2()
-            ]
-        )
-
-        self.lesion_sim = A.Compose([
-            A.OneOf([
-                A.ElasticTransform(alpha=50, sigma=7, alpha_affine=10, p=0.3),
-                # A.RandomSizedCrop(min_max_height=(16, 32), height=img_size, 
-                #                  width=img_size, p=0.3),
-                A.RandomSizedCrop(min_max_height=(16,32) , size=(img_size , img_size) , w2h_ratio=1,mask_interpolation=0,p=0.3),
-                A.OpticalDistortion(distort_limit=0.5, shift_limit=0.5, p=0.4)
-            ], p=0.5)
-        ])
-
-
-    def __call__(self , image):
-
-        if not isinstance(image , np.ndarray):
-            image = np.array(image)
-
-
-        view1 = self.transform1(image=image)['image']
-        view2 = self.transform2(image=image)['image']
-        view2 = self.lesion_sim(image=view2.permute(1,2,0).numpy())['image'].permute(2,0,1)
-
-        return view1 , view2
+from model.utils import vit_config
+from data_pipeline.data_aug import IbotRetAug
 
 
 
@@ -70,14 +17,14 @@ class MaskedViT(nn.Module):
 
     def __init__(
         self , 
-        img_size = 512,
-        patch_size = 16,
-        in_chan = 3 , 
-        embed_dim = 768,
-        depth=12 , 
-        num_heads=12,
-        mlp_ratio = 4,
-        mask_ratio=0.4,
+        img_size = vit_config["img_size"],
+        patch_size = vit_config["patch_size"],
+        in_chan = vit_config["in_chans"], 
+        embed_dim = vit_config["embed_dim"],
+        depth=vit_config["depth"], 
+        num_heads=vit_config["num_heads"],
+        mlp_ratio = vit_config["mlp_ratio"],
+        mask_ratio=vit_config["mask_ratio"],
         lesion_mask_prob=0.7
     ):
 
@@ -179,9 +126,9 @@ class CustomiBOT(nn.Module):
             self,  
             student=None,
             teacher=None,
-            embed_dim=768,
+            embed_dim=vit_config["embed_dim"],
             temp=0.1,
-            mask_ratio=0.4,
+            mask_ratio=vit_config["mask_ratio"],
             momentum=0.996
     ):
         super().__init__()
@@ -248,4 +195,98 @@ class CustomiBOT(nn.Module):
         self.momentum_update()
         return loss
 
+
+class iBOTLightningModule(pl.LightningModule):
+    def __init__(self, 
+                 model: CustomiBOT,
+                 learning_rate: float = 1e-3,
+                 weight_decay: float = 0.05,
+                 max_epochs: int = 300,
+                 warmup_epochs: int = 10):
+        super().__init__()
+        self.model = model
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
+        self.max_epochs = max_epochs
+        self.warmup_epochs = warmup_epochs
+        self.save_hyperparameters(ignore=['model'])
+
+    def training_step(self, batch, batch_idx):
+        x1, x2 = batch
+        loss = self.model(x1, x2, update_teacher=True)
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x1, x2 = batch
+        # Set update_teacher to False during validation so the teacher remains fixed.
+        loss = self.model(x1, x2, update_teacher=False)
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+        scheduler = {
+            'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, T_max=self.max_epochs - self.warmup_epochs, eta_min=1e-6),
+            'interval': 'epoch',
+            'frequency': 1,
+        }
+        return [optimizer], [scheduler]
+
+
+def main():
+    # Dataset hyperparameters:
+    num_train_samples = 103284  # full training set size
+    num_val_samples = 5000      # or any validation subset size you prefer
+    batch_size = 128
+
+    # Data augmentation (two views per sample are generated for self-supervision)
+    transform = IbotRetAug()
+
+    from data_pipeline import data_set , data_aug
+    dataset_names = ["eyepacs" , "aptos" , "ddr" , "idrid"]
+    uniform_training_data_ld = data_set.SSLTrainLoader(
+        dataset_names=dataset_names,
+        transformation=data_aug.IJEPAAugmentation(),
+        batch_size=32,
+        num_work=4,
+    )
+
+    train_data_ld = uniform_training_data_ld.get_loader()
     
+    uniform_validation_data_ld = data_set.SSLValidLoader(
+        dataset_names=dataset_names,
+        transformation=None,
+        batch_size=32,
+        num_work=4,
+    )
+
+    valid_data_ld = uniform_validation_data_ld.get_loader()
+
+    # Initialize iBOT model
+    ibot_model = CustomiBOT()
+
+    # Wrap the model in our Lightning module
+    lightning_model = iBOTLightningModule(
+        model=ibot_model,
+        learning_rate=1e-3,
+        weight_decay=0.05,
+        max_epochs=300,
+        warmup_epochs=10
+    )
+
+    # Initialize the Trainer
+    trainer = pl.Trainer(
+        max_epochs=300,
+        gpus=1,             # Adjust based on your available GPUs
+        precision=16,       # Mixed precision training
+        accumulate_grad_batches=1,
+        log_every_n_steps=50
+    )
+
+    # Start training (validation is run at the end of each epoch)
+    trainer.fit(lightning_model, train_data_ld, valid_data_ld)
+
+if __name__ == "__main__":
+    main()

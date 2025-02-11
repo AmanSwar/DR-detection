@@ -8,14 +8,14 @@ from tqdm import tqdm
 import wandb
 import time
 
-from model.utils import RearrangeAndLayerNorm
+from model.utils import RearrangeAndLayerNorm , vit_config
 
 class Patchify(nn.Module):
     """
     convert images into patches , with hierachial project to support large img size
     """
 
-    def __init__(self , img_size = 2048 , patch_size =32, in_chan=3 , embed_dim = 1024):
+    def __init__(self , img_size = 1024 , patch_size =16, in_chan=3 , embed_dim = 1024):
         super().__init__()
 
         self.img_size = img_size
@@ -86,14 +86,14 @@ class TransformerEncoder(nn.Module):
 class DRIjepa(nn.Module):
     def __init__(
             self,
-            img_size = 2048, 
-            patch_size = 32 ,
-            in_chan = 3 , 
-            embed_dim = 1024 , 
-            encoder_depth = 12 , 
-            pred_depth = 4 ,
-            n_heads = 16 , 
-            mlp_ratio =4, 
+            img_size = vit_config["img_size"], 
+            patch_size = vit_config["patch_size"] ,
+            in_chan = vit_config["in_chans"], 
+            embed_dim = vit_config["embed_dim"] , 
+            encoder_depth = vit_config["depth"] , 
+            pred_depth = vit_config["pred_depth"],
+            n_heads = vit_config["num_heads"] , 
+            mlp_ratio =vit_config["mlp_ratio"], 
             drop = 0.1
             ):
         
@@ -171,7 +171,7 @@ class DRIjepa(nn.Module):
     def extract_target(self , feature , boxes):
         B, N, D = feature.shape
         H = W = int(N ** 0.5)
-        features = rearrange(features, 'b (h w) d -> b d h w', h=H)
+        features = rearrange(feature, 'b (h w) d -> b d h w', h=H)
         
         target_features = []
         for b in range(B):
@@ -245,17 +245,7 @@ def create_DRijepa(
         mlp_ratio = 4,
         dropout = 0.1
 ):
-    model = DRIjepa(
-        img_size=img_size,
-        patch_size=patch_size,
-        in_chan=in_chan,
-        embed_dim=embed_dim,
-        encoder_depth=encoder_depth,
-        pred_depth=pred_depth,
-        n_heads=n_heads,
-        mlp_ratio=mlp_ratio,
-        drop=dropout
-    )
+    model = DRIjepa()
 
     loss = IJEPALoss()
     return model , loss
@@ -303,7 +293,7 @@ class Trainer:
         if self.scheduler is not None:
             checkpoint['scheduler_state_dict'] = self.scheduler.state_dict()
 
-        torch.save(checkpoint , self.save_dir / f"cehckpoint_ep_{epoch}.pt")
+        torch.save(checkpoint , self.save_dir / f"checkpoint_ep_{epoch}.pt")
 
     def train_epoch(self, epoch):
 

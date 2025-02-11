@@ -6,112 +6,30 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import torch.distributed as dist
 
-class RetAug:
-    def __init__(self, img_size=512):
-        # Base transform for both views
-        self.base_transform = A.Compose([
-            A.Resize(img_size, img_size),
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+from pytorch_lightning.strategies import DDPStrategy
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.loggers import TensorBoardLogger
 
-        # Additional augmentations for the first view
-        self.view1_transform = A.Compose([
-            A.HorizontalFlip(p=0.5),
-            A.VerticalFlip(p=0.5),
-            A.RandomRotate90(p=0.5),
-            A.OneOf([
-                A.GaussianBlur(blur_limit=(3, 7)),
-                A.GaussNoise(var_limit=(10.0, 50.0)),
-            ], p=0.4),
-            A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.8),
-            ToTensorV2()
-        ])
 
-        # Additional augmentations for the second view (lesion-focused)
-        self.view2_transform = A.Compose([
-            A.HorizontalFlip(p=0.5),
-            A.VerticalFlip(p=0.5),
-            A.RandomRotate90(p=0.5),
-            A.OneOf([
-                A.ElasticTransform(alpha=50, sigma=7, alpha_affine=10, p=0.3),
-                A.OpticalDistortion(distort_limit=0.5, shift_limit=0.5, p=0.4),
-                A.RandomSizedCrop(min_max_height=(32, 64), height=img_size, width=img_size, p=0.3)
-            ], p=0.5),
-            A.CoarseDropout(max_holes=8, max_height=32, max_width=32, 
-                          fill_value=0, mask_fill_value=0, p=0.5),
-            ToTensorV2()
-        ])
+from data_pipeline.data_aug import DinowregAug 
+from data_pipeline.data_set import UniformTrainDataloader
+from model.utils import vit_config
 
-    def __call__(self, image):
-        # Ensure image is in correct format (H, W, C)
-        if isinstance(image, torch.Tensor):
-            if image.dim() == 3 and image.shape[0] == 3:  # If CHW format
-                image = image.permute(1, 2, 0).numpy()
-            else:
-                image = image.numpy()
-        
-        # Apply base transform first
-        transformed = self.base_transform(image=image)
-        base_img = transformed['image']
 
-        # Apply view-specific transforms
-        view1 = self.view1_transform(image=base_img)['image']
-        view2 = self.view2_transform(image=base_img)['image']
-
-        return view1, view2
-
-# class RetAug:
-#     def __init__(self, img_size=512):
-#         self.transform1 = A.Compose([
-#             A.Resize(img_size, img_size),
-#             A.HorizontalFlip(p=0.5),
-#             A.VerticalFlip(p=0.5),
-#             A.RandomRotate90(p=0.5),
-#             ToTensorV2()
-#         ])
-
-#         self.transform2 = A.Compose([
-#             A.Resize(img_size, img_size),
-#             A.HorizontalFlip(p=0.5),
-#             A.VerticalFlip(p=0.5),
-#             A.RandomRotate90(p=0.5),
-#             A.OneOf([
-#                 A.GaussianBlur(blur_limit=(3, 7)),
-#                 A.GaussNoise(var_limit=(10.0, 50.0)),
-#             ], p=0.4),
-#             A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, p=0.8),
-#             A.CoarseDropout(max_holes=8, max_height=32, max_width=32, 
-#                           fill_value=0, mask_fill_value=0, p=0.5),
-#             ToTensorV2()
-#         ])
-
-#         self.lesion_sim = A.Compose([
-#             A.OneOf([
-#                 A.ElasticTransform(alpha=50, sigma=7, alpha_affine=10, p=0.3),
-#                 A.RandomResizedCrop(height=img_size, width=img_size, 
-#                                    scale=(0.08, 0.2), ratio=(0.75, 1.33), p=0.3),
-#                 A.OpticalDistortion(distort_limit=0.5, p=0.4)
-#             ], p=0.5)
-#         ])
-
-#     def __call__(self, image):
-#         view1 = self.transform1(image=image)['image']
-#         view2 = self.transform2(image=image)['image']
-#         view2 = self.lesion_sim(image=view2.permute(1,2,0).numpy())['image'].permute(2,0,1)
-#         return view1, view2
 
 class ViTRegs(nn.Module):
 
     def __init__(
             self,
-            img_size=1024,
-            patch_size = 16,
-            in_chans = 3,
-            embed_dim = 512,
-            depth = 12,
-            num_heads = 12,
-            mlp_ratio = 4.,
-            num_regs =4 
+            img_size=vit_config["img_size"],
+            patch_size = vit_config["patch_size"],
+            in_chans = vit_config["in_chans"],
+            embed_dim = vit_config["embed_dim"],
+            depth = vit_config["depth"],
+            num_heads = vit_config["num_heads"],
+            mlp_ratio = vit_config["mlp_ratio"],
+
+            num_regs = vit_config["num_regs"] 
     ):
         super().__init__()
         self.img_size = img_size
@@ -119,7 +37,6 @@ class ViTRegs(nn.Module):
         self.num_patches = (img_size // patch_size) ** 2
         self.embed_dim = embed_dim
         self.num_registers = num_regs
-
 
         self.patch_embed = nn.Conv2d(in_chans , embed_dim , kernel_size=patch_size , stride=patch_size)
 
@@ -325,25 +242,33 @@ class DINOLoss(nn.Module):
     
 
 class RetinaDINOLightning(pl.LightningModule):
-    def __init__(self, img_size=512, patch_size=16, embed_dim=768,
-                 warmup_epochs=10, max_epochs=100, weight_decay=0.04,
-                 momentum=0.996, batch_size=64, num_registers=4):
+    def __init__(
+            self, 
+            img_size=512, 
+            patch_size=32, 
+            embed_dim=1024,
+            warmup_epochs=5, 
+            max_epochs=50, 
+            weight_decay=0.05,
+            momentum=0.9996, 
+            batch_size=32, 
+            num_registers=8
+            ):
         super().__init__()
         self.save_hyperparameters()
+        vit_config.update({
+            "img_size": img_size,
+            "patch_size": patch_size,
+            "embed_dim": embed_dim,
+            "depth": 12, 
+            "num_heads": 16,  
+            "mlp_ratio": 4,
+            "num_regs": num_registers
+        })
         
         # Initialize student and teacher models
-        self.student = ViTRegs(
-            img_size=img_size,
-            patch_size=patch_size,
-            embed_dim=embed_dim,
-            num_regs=num_registers
-        )
-        self.teacher = ViTRegs(
-            img_size=img_size,
-            patch_size=patch_size,
-            embed_dim=embed_dim,
-            num_regs=num_registers
-        )
+        self.student = ViTRegs(**vit_config)
+        self.teacher = ViTRegs(**vit_config)
         
         # Initialize teacher from student
         self._init_teacher()
@@ -351,7 +276,10 @@ class RetinaDINOLightning(pl.LightningModule):
         # DINO loss with register consistency
         self.dino_loss = DINOLoss(
             output_dim=embed_dim,
-            reg_weight=0.1
+            warmup_teacher_temp=0.04,
+            teacher_temp=0.05,
+            student_temp=0.1,  
+            reg_weight=0.15  
         )
         
         # Training parameters
@@ -402,7 +330,7 @@ class RetinaDINOLightning(pl.LightningModule):
         return total_loss
 
     def configure_optimizers(self):
-        # Separate parameters for weight decay
+        # Adjusted learning rate and optimization parameters
         decay_params = []
         no_decay_params = []
         for name, param in self.student.named_parameters():
@@ -411,12 +339,15 @@ class RetinaDINOLightning(pl.LightningModule):
             else:
                 decay_params.append(param)
 
+        # Adjusted base learning rate for medical imaging
+        base_lr = 0.0003 * (self.batch_size / 256)
+        
         optim = torch.optim.AdamW([
             {'params': decay_params, 'weight_decay': self.weight_decay},
             {'params': no_decay_params, 'weight_decay': 0.0}
-        ], lr=0.0005 * (self.batch_size / 256), betas=(0.9, 0.95))
+        ], lr=base_lr, betas=(0.9, 0.999))  # Adjusted beta2 for stability
         
-        # Cosine schedule with linear warmup
+        # Cosine schedule with shorter warmup
         lr_scheduler = {
             'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR(
                 optim,
@@ -451,3 +382,67 @@ class RetinaDINOLightning(pl.LightningModule):
         if dist.is_initialized():
             dist.all_reduce(self.dino_loss.center, op=dist.ReduceOp.SUM)
             self.dino_loss.center /= dist.get_world_size()
+
+
+def main():
+
+    NUM_GPUS = 2
+    NUM_NODES = 1
+    BATCH_SIZE = 32  
+    NUM_WORKERS = 2  
+    
+    # Initialize model
+    model = RetinaDINOLightning(
+        img_size=512,
+        batch_size=BATCH_SIZE,
+        max_epochs=50
+    )
+    
+    augmentor = DinowregAug(img_size=vit_config['img_size'])
+    
+    # Create DataModule
+    dataset_names = ["eyepacs" , "aptos" , "ddr" , "idrid"]
+    uniform_data_ld = UniformTrainDataloader(
+        dataset_names=dataset_names,
+        transformation=augmentor,
+        batch_size=vit_config['batch_size'],
+        num_workers=NUM_WORKERS,
+        sampler=True
+    )
+
+    data_ld = uniform_data_ld.get_loader()
+    
+    callbacks = [
+        ModelCheckpoint(
+            dirpath='checkpoints',
+            filename='dino-retina-{epoch:02d}-{train_loss:.3f}',
+            save_top_k=3,
+            monitor='train_loss',
+            mode='min'
+        ),
+        LearningRateMonitor(logging_interval='step')
+    ]
+    
+
+    logger = TensorBoardLogger("logs", name="dino_retina")
+    
+
+    trainer = pl.Trainer(
+        accelerator='gpu',
+        devices=NUM_GPUS,
+        num_nodes=NUM_NODES,
+        strategy=DDPStrategy(find_unused_parameters=False),
+        max_epochs=50,
+        precision=16,  
+        callbacks=callbacks,
+        logger=logger,
+        gradient_clip_val=3.0,
+        accumulate_grad_batches=1,
+        log_every_n_steps=50,
+        sync_batchnorm=True  
+    )
+    
+    trainer.fit(model, data_ld)
+
+if __name__ == '__main__':
+    main()

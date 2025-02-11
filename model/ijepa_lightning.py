@@ -11,177 +11,193 @@ from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.optim.lr_scheduler import LinearLR, ChainedScheduler
-
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 # from model.ijepa import IJEPA 
 from model.DRijepa import DRIjepa , IJEPALoss
 from data_pipeline import data_aug , data_set
-
-class IjepaLightning(pl.LightningModule):
+class IJEPA_Lightning(pl.LightningModule):
     def __init__(
-            self,
-            img_size=224,
-            patch_size=16,
-            in_chans=3,
-            embed_dim=768,
-            encoder_depth=12,
-            predictor_depth=4,
-            num_heads=12,
-            mlp_ratio=4,
-            dropout=0.1,
-            momentum=0.999,
-            base_lr=1.5e-4,
-            weight_decay=0.05,
-        ):
-        super().__init__()
-        self.save_hyperparameters()
-
-        self.ijepa = DRIjepa(
-            img_size=img_size,
-            patch_size=patch_size,
-            in_chan=in_chans,
-            embed_dim=embed_dim,
-            encoder_depth=encoder_depth,
-            pred_depth=predictor_depth,
-            n_heads=num_heads,
-            mlp_ratio=mlp_ratio,
-            drop=dropout
-        )
-
-        self.criterion = IJEPALoss()
-        self.momentum = momentum
-
-    def training_step(self, batch , batch_idx):
-        images = batch
-        pred_feat, target_feat = self.ijepa(images)
-        loss = self.criterion(pred_feat, target_feat)
-        
-        self.log('train_loss', loss, prog_bar=True, sync_dist=True)
-        self.log('learning_rate', self.optimizers().param_groups[0]['lr'], prog_bar=True)
-        self.log('grad_norm', self.get_grad_norm(), prog_bar=False)
-        return loss
-    
-    def on_train_batch_end(self , outputs , batch , batch_idx):
-        with torch.no_grad():
-            for t_param, c_param in zip(self.ijepa.target_encoder.parameters(),self.ijepa.context_encoder.parameters()):
-                t_param.data = t_param.data * self.momentum + c_param.data * (1. - self.momentum)
-
-    def configure_optimizers(self):
-        optimizer = optim.AdamW(
-            self.ijepa.context_encoder.parameters(),
-            lr=self.hparams.base_lr,
-            betas=(0.9 , 0.95),
-            weight_decay=self.hparams.weight_decay
-        )
-
-
-        # scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        #     optimizer,
-        #     T_max=self.trainer.max_epochs,
-        #     eta_min=1e-6
-        # )
-        warmup_scheduler = LinearLR(optimizer, start_factor=0.1, total_iters=10)
-        cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=290, eta_min=1e-6)
-        scheduler = ChainedScheduler([warmup_scheduler, cosine_scheduler])
-
-        return [optimizer] , [scheduler]
-    
-class IJEPADataModule(pl.LightningDataModule):
-
-    def __init__(
-            self,
-            dataset_names=("eyepacs", "aptos", "ddr", "idrid"),
-            batch_size=64,
-            num_workers=8,
-            img_size=224
-    ):
-        super().__init__()
-        self.batch_size = batch_size
-        self.num_workers = num_workers
-        self.dataset_names = dataset_names
-        self.transform = data_aug.IJEPAAugmentation()
-
-    def setup(self , stage=None):
-        self.full_dataset = data_set.UnitedTrainingDataset(
-            *self.dataset_names,
-            transformation=self.transform
-        )
-
-    def train_dataloader(self):
-        dataset_names = ["eyepacs" , "aptos" , "ddr" , "idrid"]
-        uniform_data_ld = data_set.UniformTrainDataloader(
-            dataset_names=dataset_names,
-            transformation=data_aug.IJEPAAugmentation(),
-            batch_size=self.batch_size,
-            num_workers=4,
-            sampler=True
-        )
-
-        data_ld = uniform_data_ld.get_loader()
-
-        return data_ld
-    
-def train_ijepa():
-
-    model = IjepaLightning(
-        embed_dim=1024,
-        num_heads=16,
+        self,
+        img_size=512,  # Increased for retinal images
+        patch_size=32,  # Larger patches
+        in_chans=3,
+        embed_dim=1024,  # Increased embedding dimension
         encoder_depth=12,
         predictor_depth=4,
-        base_lr=1.5e-4,
-        weight_decay=0.05
-    )
-
-    datamodule = IJEPADataModule(
-        batch_size=64,
-        num_workers=8
-    )
-
-    wandb_logger = WandbLogger(project="ijepa_training_lightning" , log_model=True)
-
-    trainer = pl.Trainer(
-        accelerator="gpu",
-        devices=-1,
-        strategy=DDPStrategy(find_unused_parameters=False),
-        max_epochs=300,
-        precision='16-mixed',
-        logger=wandb_logger,
-        log_every_n_steps=50,
-        check_val_every_n_epoch=None,
-        enable_checkpointing=True,
-        callbacks=[
-            ModelCheckpoint(
-                dirpath='ijepa_checkpts',
-                save_top_k=2,
-                monitor='train_loss',
-                every_n_epochs=5
-            )
-            
-        ]
+        num_heads=16,  # Increased heads
+        mlp_ratio=4,
+        dropout=0.1,
+        learning_rate=1.5e-4,
+        weight_decay=0.05,
+        warmup_epochs=5,
+        max_epochs=50,
+        batch_size=32
+    ):
+        super().__init__()
+        self.save_hyperparameters()
         
+        # Initialize base IJEPA model
+        self.model = DRIjepa(
+            img_size=img_size,
+            patch_size=patch_size,
+            in_chans=in_chans,
+            embed_dim=embed_dim,
+            encoder_depth=encoder_depth,
+            predictor_depth=predictor_depth,
+            num_heads=num_heads,
+            mlp_ratio=mlp_ratio,
+            dropout=dropout
+        )
+        
+        self.loss_fn = IJEPALoss()
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
+        self.warmup_epochs = warmup_epochs
+        self.max_epochs = max_epochs
+        self.batch_size = batch_size
+
+    def get_random_boxes(self, batch_size, n_boxes=6):  # Increased number of boxes
+        """Generate random target boxes for masked prediction"""
+        boxes = []
+        for _ in range(batch_size):
+            batch_boxes = []
+            for _ in range(n_boxes):
+                # Adjusted for 512/32 = 16 grid
+                x1 = torch.randint(0, 16, (1,)).item()
+                y1 = torch.randint(0, 16, (1,)).item()
+                w = torch.randint(3, 7, (1,)).item()  # Larger boxes
+                h = torch.randint(3, 7, (1,)).item()
+                batch_boxes.append([x1, y1, x1 + w, y1 + h])
+            boxes.append(batch_boxes)
+        return torch.tensor(boxes)
+
+    def training_step(self, batch, batch_idx):
+        images = batch
+        boxes = self.get_random_boxes(images.shape[0])
+        
+        pred_features, target_features = self.model(images, boxes)
+        loss = self.loss_fn(pred_features, target_features)
+        
+        # Update teacher encoder
+        self.model.momentum_update(
+            self.model.target_encoder,
+            self.model.context_encoder,
+            momentum=0.9996  # Increased momentum for stability
+        )
+        
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, sync_dist=True)
+        return loss
+
+    def configure_optimizers(self):
+        # Separate parameters for weight decay
+        decay = set()
+        no_decay = set()
+        whitelist_weight_modules = (nn.Linear, nn.Conv2d)
+        blacklist_weight_modules = (nn.LayerNorm, nn.BatchNorm2d)
+        
+        for mn, m in self.named_modules():
+            for pn, p in m.named_parameters():
+                fpn = f"{mn}.{pn}" if mn else pn
+                
+                if pn.endswith('bias'):
+                    no_decay.add(fpn)
+                elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):
+                    decay.add(fpn)
+                elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
+                    no_decay.add(fpn)
+
+        param_dict = {pn: p for pn, p in self.named_parameters()}
+        optim_groups = [
+            {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": self.weight_decay},
+            {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
+        ]
+
+        optimizer = torch.optim.AdamW(
+            optim_groups,
+            lr=self.learning_rate * (self.batch_size / 256),
+            betas=(0.9, 0.95)
+        )
+
+        scheduler = {
+            'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=self.max_epochs - self.warmup_epochs,
+                eta_min=1e-6
+            ),
+            'interval': 'epoch',
+            'frequency': 1
+        }
+        
+        if self.warmup_epochs > 0:
+            warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+                optimizer,
+                start_factor=0.01,
+                end_factor=1.0,
+                total_iters=self.warmup_epochs
+            )
+            scheduler = {
+                'scheduler': torch.optim.lr_scheduler.SequentialLR(
+                    optimizer,
+                    schedulers=[warmup_scheduler, scheduler['scheduler']],
+                    milestones=[self.warmup_epochs]
+                ),
+                'interval': 'epoch',
+                'frequency': 1
+            }
+
+        return [optimizer], [scheduler]
+
+def main():
+    # Dataset setup (using your existing data pipeline)
+    dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"]
+    uniform_data_ld = data_set.UniformTrainDataloader(
+        dataset_names=dataset_names,
+        transformation=data_aug.IJEPAAugmentation(),
+        batch_size=32,  # Per GPU batch size
+        num_workers=8,
+        sampler=True
+    )
+    train_loader = uniform_data_ld.get_loader()
+
+    # Initialize model
+    model = IJEPA_Lightning(
+        img_size=512,
+        batch_size=32,
+        max_epochs=50
     )
 
-    trainer.fit(model, datamodule=datamodule)
+    # Callbacks
+    callbacks = [
+        ModelCheckpoint(
+            dirpath='checkpoints',
+            filename='ijepa-retina-{epoch:02d}-{train_loss:.3f}',
+            save_top_k=3,
+            monitor='train_loss',
+            mode='min'
+        ),
+        LearningRateMonitor(logging_interval='step')
+    ]
 
-def verify_dataset_paths():
-    import os
-    from data_pipeline.data_load import DdrGradingDataset
-    print(f"Current working directory: {os.getcwd()}")
-    
-    dataset = DdrGradingDataset(root_dir="data/ddr")
-    print(f"\nDataset root directory: {dataset.root_dir}")
-    
-    # Verify first few images
-    train_images, _ = dataset.get_train_set()
-    print("\nChecking first 5 training images:")
-    for img_path in train_images[:5]:
-        exists = os.path.exists(img_path)
-        print(f"Image: {img_path}")
-        print(f"Exists: {exists}")
-        if exists:
-            print(f"File size: {os.path.getsize(img_path)} bytes")
-        print()
+    # Logger
+    wandb_logger = WandbLogger(project="ijepa-retina", log_model="all")
+
+    # Trainer
+    trainer = pl.Trainer(
+        accelerator='gpu',
+        devices=2,  # Your 2 A100s
+        strategy=DDPStrategy(find_unused_parameters=False),
+        max_epochs=50,
+        precision=16,  # Mixed precision
+        callbacks=callbacks,
+        logger=wandb_logger,
+        gradient_clip_val=3.0,
+        accumulate_grad_batches=1,
+        log_every_n_steps=50,
+        sync_batchnorm=True
+    )
+
+    # Train
+    trainer.fit(model, train_loader)
 
 if __name__ == "__main__":
-    train_ijepa()
-        
-        
+    main()
