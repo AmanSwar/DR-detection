@@ -14,6 +14,8 @@ from tqdm import tqdm
 import os
 import random
 from scipy.ndimage import gaussian_filter, map_coordinates
+import cv2
+from PIL import ImageFilter
 
 class DINOAugmentation:
     def __init__(self ,
