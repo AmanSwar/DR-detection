@@ -267,8 +267,8 @@ class RetinaDINOLightning(pl.LightningModule):
         })
         
         # Initialize student and teacher models
-        self.student = ViTRegs(**vit_config)
-        self.teacher = ViTRegs(**vit_config)
+        self.student = ViTRegs()
+        self.teacher = ViTRegs()
         
         # Initialize teacher from student
         self._init_teacher()
