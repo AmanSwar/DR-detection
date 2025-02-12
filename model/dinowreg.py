@@ -386,7 +386,7 @@ class RetinaDINOLightning(pl.LightningModule):
 
 def main():
 
-    NUM_GPUS = 2
+    NUM_GPUS = 1
     NUM_NODES = 1
     BATCH_SIZE = 32  
     NUM_WORKERS = 2  
