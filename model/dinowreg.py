@@ -405,7 +405,7 @@ def main():
     uniform_data_ld = UniformTrainDataloader(
         dataset_names=dataset_names,
         transformation=augmentor,
-        batch_size=vit_config['batch_size'],
+        batch_size=BATCH_SIZE,
         num_workers=NUM_WORKERS,
         sampler=True
     )
