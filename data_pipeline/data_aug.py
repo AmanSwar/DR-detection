@@ -15,7 +15,10 @@ import os
 import random
 from scipy.ndimage import gaussian_filter, map_coordinates
 import cv2
-from PIL import ImageFilter
+from PIL import ImageFilter, ImageEnhance
+import math
+
+#--------------------------------------------------------------------------------------------
 
 class DINOAugmentation:
     def __init__(self ,
@@ -94,57 +97,122 @@ class DINOAugmentation:
 
 
         return views
+#--------------------------------------------------------------------------------------------
 
+class GaussianNoiseTransform:
+    def __init__(self, var_limit=(10.0, 50.0)):
+        self.var_limit = var_limit
+
+    def __call__(self, img):
+        var = random.uniform(*self.var_limit)
+        std = math.sqrt(var) / 255.0
+        return img + torch.randn_like(img) * std
+
+class MultiplicativeNoiseTransform:
+    def __init__(self, multiplier=(0.95, 1.05)):
+        self.multiplier = multiplier
+
+    def __call__(self, img):
+        return img * random.uniform(*self.multiplier)
+
+class MedianBlurTransform:
+    def __init__(self, blur_limit=3):
+        self.blur_limit = blur_limit
+
+    def __call__(self, img):
+        img_pil = TF.to_pil_image(img)
+        img_pil = img_pil.filter(ImageFilter.MedianFilter(self.blur_limit))
+        return TF.to_tensor(img_pil)
+
+class SharpenTransform:
+    def __init__(self, alpha=(0.2, 0.5), lightness=(0.5, 1.0)):
+        self.alpha = alpha
+        self.lightness = lightness
+
+    def __call__(self, img):
+        alpha = random.uniform(*self.alpha)
+        lightness = random.uniform(*self.lightness)
+        img_pil = TF.to_pil_image(img)
+        enhancer = ImageEnhance.Sharpness(img_pil)
+        factor = lightness + alpha * (lightness - 1.0)
+        return TF.to_tensor(enhancer.enhance(factor))
+
+class UnsharpMaskTransform:
+    def __init__(self, blur_limit=(3, 7)):
+        self.blur_limit = blur_limit
+
+    def __call__(self, img):
+        radius = random.randint(*self.blur_limit)
+        img_pil = TF.to_pil_image(img)
+        img_pil = img_pil.filter(ImageFilter.UnsharpMask(radius=radius, percent=150, threshold=3))
+        return TF.to_tensor(img_pil)
+
+class CoarseDropout_ijepa:
+    def __init__(self, max_holes=8, max_h=32, max_w=32, min_holes=1, min_h=8, min_w=8, fill_value=0, p=0.2):
+        self.max_holes = max_holes
+        self.max_h = max_h
+        self.max_w = max_w
+        self.min_holes = min_holes
+        self.min_h = min_h
+        self.min_w = min_w
+        self.fill_value = fill_value
+        self.p = p
+
+    def __call__(self, img):
+        if random.random() < self.p:
+            C, H, W = img.shape
+            num_holes = random.randint(self.min_holes, self.max_holes)
+            for _ in range(num_holes):
+                h = random.randint(self.min_h, self.max_h)
+                w = random.randint(self.min_w, self.max_w)
+                y = random.randint(0, H - h)
+                x = random.randint(0, W - w)
+                img[:, y:y+h, x:x+w] = self.fill_value
+        return img
 
 class IJEPAAugmentation:
-    def __init__(self):
-        self.transform = A.Compose([
-            A.Resize(1024 , 1024),
-            A.RandomBrightnessContrast(
-                brightness_limit=0.1, 
-                contrast_limit=0.1, 
+    def __init__(self , img_size):
+        self.pil_transforms = transforms.Compose([
+            transforms.Resize((img_size, img_size)),
+            transforms.RandomApply(
+                [transforms.ColorJitter(brightness=0.1, contrast=0.1)],
                 p=0.5
             ),
-            A.OneOf([
-                A.GaussNoise(var_limit=(10.0, 50.0), p=0.5),
-                A.MultiplicativeNoise(multiplier=(0.95, 1.05), p=0.5),
-            ], p=0.3),
-            A.OneOf([
-               
-                A.GaussianBlur(blur_limit=(3, 5), p=0.3),
-                A.MedianBlur(blur_limit=3, p=0.3),
-            ], p=0.2),
-         
-            A.OneOf([
-                A.Sharpen(alpha=(0.2, 0.5), lightness=(0.5, 1.0), p=0.5),
-                A.UnsharpMask(blur_limit=(3, 7), p=0.5),
-            ], p=0.3),
-       
-            A.HueSaturationValue(
-                hue_shift_limit=5,
-                sat_shift_limit=10,
-                val_shift_limit=5,
+            transforms.RandomApply(
+                [transforms.ColorJitter(hue=5/360, saturation=0.1, brightness=0.05)],
                 p=0.3
-            ),
-    
-            A.CoarseDropout(
-                max_holes=8,
-                max_height=32,
-                max_width=32,
-                min_holes=1,
-                min_height=8,
-                min_width=8,
-                fill_value=0,
-                mask_fill_value=0,
-                p=0.2
-            ),
-            ToTensorV2()
+            )
+        ])
+        self.tensor_transforms = transforms.Compose([
+            transforms.RandomApply([
+                transforms.RandomChoice([
+                    GaussianNoiseTransform((10.0, 50.0)),
+                    MultiplicativeNoiseTransform((0.95, 1.05))
+                ])
+            ], p=0.3),
+            transforms.RandomApply([
+                transforms.RandomChoice([
+                    transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
+                    MedianBlurTransform(3)
+                ])
+            ], p=0.2),
+            transforms.RandomApply([
+                transforms.RandomChoice([
+                    SharpenTransform((0.2, 0.5), (0.5, 1.0)),
+                    UnsharpMaskTransform((3, 7))
+                ])
+            ], p=0.3),
+            CoarseDropout_ijepa(p=0.2)
         ])
 
-
     def __call__(self, image):
-        trans_img =  self.transform(image=image)['image']
-        return trans_img.float()
+        image = self.pil_transforms(image)
+        image = TF.to_tensor(image)
+        image = self.tensor_transforms(image)
+        return image.float()
+    
+
+#--------------------------------------------------------------------------------------------
 
 class RandomRotate90:
     def __call__(self, img):
@@ -279,7 +347,8 @@ class IbotRetAug:
         view1 = self.transform1(image)
         view2 = self.transform2(image)
         return view1, view2
-    
+
+#--------------------------------------------------------------------------------------------
 
 class RandomRotate90(object):
     """Rotate the PIL image by a random multiple of 90 degrees with probability p."""
@@ -514,3 +583,6 @@ class DinowregAug:
         view1 = self.view1_transform(image)
         view2 = self.view2_transform(image)
         return view1, view2
+    
+
+#--------------------------------------------------------------------------------------------
