@@ -16,15 +16,27 @@ class RearrangeAndLayerNorm(nn.Module):
 
 
 vit_config = {
-    "img_size" : 1024,
+    "img_size" : 512,
     "patch_size" : 32,
     "in_chans" : 3,
-    "embed_dim" : 1024,
-    "depth" : 12,
-    "num_heads" : 16,
+    "embed_dim" : 512,
+    "depth" : 6,
+    "num_heads" : 12,
     "mlp_ratio" : 4,
     "mask_ratio" : 0.4, #only for ibot
     "num_regs" : 8, # only for dino with regs
     "pred_depth" : 4
 
 }
+
+"""
+vit_config["img_size"]
+vit_config["patch_size"]
+vit_config["num_regs"]
+vit_config["mlp_ratio"]
+vit_config["num_heads"]
+vit_config["depth"]
+vit_config["embed_dim"]
+vit_config["in_chans"]
+
+"""
