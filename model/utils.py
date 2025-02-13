@@ -21,7 +21,7 @@ vit_config = {
     "in_chans" : 3,
     "embed_dim" : 512,
     "depth" : 6,
-    "num_heads" : 12,
+    "num_heads" : 8,
     "mlp_ratio" : 4,
     "mask_ratio" : 0.4, #only for ibot
     "num_regs" : 8, # only for dino with regs
