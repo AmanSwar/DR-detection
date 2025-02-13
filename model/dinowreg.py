@@ -11,7 +11,7 @@ import torch.multiprocessing as mp
 
 
 from data_pipeline.data_aug import DinowregAug 
-from data_pipeline.data_set import UniformTrainDataloader
+from data_pipeline.data_set import UniformTrainDataloader , SSLTrainLoader ,SSLValidLoader
 from model.utils import vit_config
 
 
@@ -212,28 +212,28 @@ def train_single_gpu(train_dl , b_size , autocast=False):
             no_decay_params.append(param)
         else:
             decay_params.append(param)
-    # base_lr = 0.0003 * (batch_size / 256)
-    base_lr = 0.0003
+    base_lr = 0.0003 * (batch_size / 256)
+    # base_lr = 0.0003
     optimizer = torch.optim.AdamW([
         {'params': decay_params, 'weight_decay': weight_decay},
         {'params': no_decay_params, 'weight_decay': 0.0}
     ], lr=base_lr, betas=(0.9, 0.999))
     
-    # # Learning rate scheduler: warmup + cosine annealing.
-    # if warmup_epochs > 0:
-    #     warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
-    #         optimizer, start_factor=0.01, end_factor=1.0, total_iters=warmup_epochs
-    #     )
-    #     cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-    #         optimizer, T_max=(max_epochs - warmup_epochs), eta_min=1e-6
-    #     )
-    #     scheduler = torch.optim.lr_scheduler.SequentialLR(
-    #         optimizer, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[warmup_epochs]
-    #     )
-    # else:
-    #     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-    #         optimizer, T_max=max_epochs, eta_min=1e-6
-    #     )
+    # Learning rate scheduler: warmup + cosine annealing.
+    if warmup_epochs > 0:
+        warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=0.01, end_factor=1.0, total_iters=warmup_epochs
+        )
+        cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=(max_epochs - warmup_epochs), eta_min=1e-6
+        )
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[warmup_epochs]
+        )
+    else:
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=max_epochs, eta_min=1e-6
+        )
     
 
 # ---------------------------------------------------------------------------
@@ -463,13 +463,15 @@ def train_ddp(args):
 
 if __name__ == "__main__":
     augmentor = DinowregAug(img_size=vit_config['img_size'])
-    dataset_names = ["eyepacs", "aptos", "ddr", "idrid"]
-    uniform_data_ld = UniformTrainDataloader(
+    dataset_names = ["eyepacs", "aptos", "ddr", "idrid" , "messdr"]
+
+
+    train_loader = SSLTrainLoader(
         dataset_names=dataset_names,
         transformation=augmentor,
         batch_size=32,
-        num_workers=2,
-        sampler=False  # No need for a distributed sampler on single GPU.
     )
-    train_loader = uniform_data_ld.get_loader()
 
+    data_ld = train_loader.get_loader()
+
+    train_single_gpu(train_dl=data_ld , b_size=32)
