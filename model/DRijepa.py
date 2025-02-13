@@ -378,15 +378,14 @@ class Trainer:
         
 if __name__ == "__main__":
     print("Hii I am here")
-    BATCH_SIZE = 64
+    BATCH_SIZE = 32
     from data_pipeline import data_set , data_aug
-    dataset_names = ["eyepacs" , "aptos" , "ddr" , "idrid"]
-    uniform_data_ld = data_set.UniformTrainDataloader(
+    dataset_names = ["eyepacs" , "aptos" , "ddr" , "idrid" , "messdr"]
+    uniform_data_ld = data_set.SSLTrainLoader(
         dataset_names=dataset_names,
         transformation=data_aug.IJEPAAugmentation(),
         batch_size=BATCH_SIZE,
         num_workers=4,
-        sampler=True
     )
 
     data_ld = uniform_data_ld.get_loader()
