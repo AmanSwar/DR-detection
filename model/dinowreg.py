@@ -470,6 +470,7 @@ if __name__ == "__main__":
         dataset_names=dataset_names,
         transformation=augmentor,
         batch_size=32,
+        num_work=4,
     )
 
     data_ld = train_loader.get_loader()
