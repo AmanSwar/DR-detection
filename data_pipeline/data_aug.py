@@ -580,6 +580,10 @@ class DinowregAug:
                 image = transforms.ToPILImage()(image)
             else:
                 image = transforms.ToPILImage()(image)
+
+        elif isinstance(image, np.ndarray):
+            image = Image.fromarray(image)
+    
         view1 = self.view1_transform(image)
         view2 = self.view2_transform(image)
         return view1, view2
