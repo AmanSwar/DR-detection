@@ -58,7 +58,7 @@ class Student(nn.Module):
 
 
 class Teacher(nn.Module):
-    def __init__(self , encoder: nn.Module , head: nn.Sequential , centering):
+    def __init__(self , encoder: nn.Module , head: nn.Sequential):
         super().__init__()
         self.encoder = encoder
         self.head = head
@@ -111,7 +111,7 @@ class DINOLoss(nn.Module):
 
 class SwinDINO:
     def __init__(self, 
-                 embed_dim=96, 
+                 embed_dim=128, 
                  depths=[2, 2, 6, 2],
                  num_heads=[3, 6, 12, 24],
                  out_dim=65536,
@@ -120,30 +120,53 @@ class SwinDINO:
                  momentum_teacher=0.996,
                  use_wandb=True):
         
-        # Initialize Swin Transformer as encoder
-        self.encoder = create_model(
+
+        self.student_encoder = create_model(
             'swin_tiny_patch4_window7_224',
             pretrained=False,
-            num_classes=0,  # Remove classification head
+            num_classes=0,  
             embed_dim=embed_dim,
             depths=depths,
             num_heads=num_heads
         )
-        
-        # Get feature dimension from encoder
+
+        self.teacher_encoder = create_model(
+            'swin_tiny_patch4_window7_224',
+            pretrained=False,
+            num_classes=0,  
+            embed_dim=embed_dim,
+            depths=depths,
+            num_heads=num_heads
+        )
         with torch.no_grad():
             dummy_input = torch.randn(1, 3, 224, 224)
-            features = self.encoder(dummy_input)
+            features = self.student_encoder(dummy_input)
             in_dim = features.shape[1]
+
+        self.student_head = DINOHead(
+            in_dim=in_dim, 
+            out_dim=out_dim,
+            hidden_dim=hidden_dim,
+            bottleneck_dim=bottleneck_dim
+            )
         
-        self.head = DINOHead(in_dim=in_dim, 
+        self.teacher_head = DINOHead(in_dim=in_dim, 
                             out_dim=out_dim,
                             hidden_dim=hidden_dim,
                             bottleneck_dim=bottleneck_dim)
         
-        self.student = Student(encoder=self.encoder, head=self.head).cuda()
-        self.teacher = Teacher(encoder=self.encoder, head=self.head).cuda()
         
+        
+        self.student = Student(encoder=self.student_encoder, head=self.student_head).cuda()
+        self.teacher = Teacher(encoder=self.teacher_encoder, head=self.teacher_head).cuda()
+        
+
+
+        self._init_teacher()
+
+
+
+
         # Initialize loss
         self.dino_loss = DINOLoss(out_dim=out_dim).cuda()
         
@@ -161,6 +184,16 @@ class SwinDINO:
                 "bottleneck_dim": bottleneck_dim,
                 "momentum_teacher": momentum_teacher
             })
+
+    def _init_teacher(self):
+        """Initialize teacher with student weights"""
+        with torch.no_grad():
+            for param_t, param_s in zip(self.teacher.parameters(), 
+                                      self.student.parameters()):
+                param_t.data.copy_(param_s.data)
+            # Freeze teacher
+            for param in self.teacher.parameters():
+                param.requires_grad = False
 
     def update_teacher(self):
         with torch.no_grad():
@@ -203,7 +236,7 @@ class SwinDINO:
 
     def train(self, dataloader, num_epochs, batch_size, optimizer, lr_scheduler=None):
         
-
+ 
         for epoch in range(num_epochs):
             epoch_loss = 0
             progress_bar = tqdm(dataloader, desc=f'Epoch {epoch+1}/{num_epochs}')
@@ -321,7 +354,7 @@ def single_gpu_train(dataloader , n_epochs ,batch_size):
         hidden_dim=2048,
         bottleneck_dim=256,
         use_wandb=True
-    ).to(device)
+    )
     
     optimizer = torch.optim.AdamW(
         model.student.parameters(),
