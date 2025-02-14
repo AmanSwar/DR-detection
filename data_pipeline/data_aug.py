@@ -76,10 +76,10 @@ class GaussNoise(object):
 # The main augmentation class using torchvision.transforms
 class DINOAugmentation:
     def __init__(self,
-                 img_size: int = 1024,
-                 global_crop: int = 900,
-                 local_crop: int = 400,
-                 n_crops_local: int = 7):
+                 img_size: int = 224,
+                 global_crop: int = 224,
+                 local_crop: int = 96,
+                 n_crops_local: int = 6):
         self.n_crops_local = n_crops_local
 
         # Base transform: resize then apply CLAHE
@@ -113,6 +113,7 @@ class DINOAugmentation:
         # Local augmentation: random crop, flip, slight brightness/contrast jitter, then tensor conversion.
         self.local_transform = transforms.Compose([
             transforms.RandomResizedCrop((local_crop, local_crop)),
+            transforms.Resize((global_crop, global_crop)),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomApply([
                 transforms.ColorJitter(brightness=0.1, contrast=0.1)
