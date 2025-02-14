@@ -19,84 +19,125 @@ from PIL import ImageFilter, ImageEnhance
 import math
 
 #--------------------------------------------------------------------------------------------
+# Custom CLAHE transform (applied in LAB color space)
+class CLAHE(object):
+    def __init__(self, clip_limit=3.0, tile_grid_size=(8, 8)):
+        self.clip_limit = clip_limit
+        self.tile_grid_size = tile_grid_size
+        self.clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
 
+    def __call__(self, img):
+        # Ensure input is a PIL Image in RGB
+        if not isinstance(img, Image.Image):
+            img = Image.fromarray(img)
+        img_np = np.array(img)
+        # Convert from RGB to LAB color space
+        lab = cv2.cvtColor(img_np, cv2.COLOR_RGB2LAB)
+        l, a, b = cv2.split(lab)
+        # Apply CLAHE to the L-channel
+        l = self.clahe.apply(l)
+        lab = cv2.merge((l, a, b))
+        # Convert back to RGB
+        img_clahe = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+        return Image.fromarray(img_clahe)
+
+# Custom RandomRotate90 (rotates by a random 90° multiple)
+class RandomRotate90(object):
+    def __call__(self, img):
+        # Choose a random angle from {90, 180, 270}
+        angle = random.choice([90, 180, 270])
+        return TF.rotate(img, angle)
+
+# Custom Gaussian blur that randomly chooses a kernel size
+class RandomGaussianBlur_dino(object):
+    def __init__(self, sigma=(0.1, 2.0)):
+        self.sigma = sigma
+
+    def __call__(self, img):
+        kernel_size = random.choice([3, 5, 7])
+        # torchvision.transforms.GaussianBlur requires kernel_size to be odd and a number or tuple
+        return transforms.GaussianBlur(kernel_size=kernel_size, sigma=self.sigma)(img)
+
+# Custom GaussNoise transform: adds noise to a PIL image
+class GaussNoise(object):
+    def __init__(self, mean=0.0, std=0.1):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, img):
+        # Convert PIL image to numpy float image in [0,1]
+        np_img = np.array(img).astype(np.float32) / 255.0
+        noise = np.random.normal(self.mean, self.std, np_img.shape)
+        np_img = np_img + noise
+        np_img = np.clip(np_img, 0, 1)
+        np_img = (np_img * 255).astype(np.uint8)
+        return Image.fromarray(np_img)
+
+# The main augmentation class using torchvision.transforms
 class DINOAugmentation:
-    def __init__(self ,
-        img_size: int = 1024,
-        global_crop: int = 900 ,
-        local_crop: int = 400 ,
-        n_crops_local : int = 7
-        ):
+    def __init__(self,
+                 img_size: int = 1024,
+                 global_crop: int = 900,
+                 local_crop: int = 400,
+                 n_crops_local: int = 7):
         self.n_crops_local = n_crops_local
-        self.base_transform = A.Compose([
-            A.Resize(img_size , img_size),
-            A.CLAHE(clip_limit=3.0, tile_grid_size=(8, 8), p=1.0),
+
+        # Base transform: resize then apply CLAHE
+        self.base_transform = transforms.Compose([
+            transforms.Resize((img_size, img_size)),
+            CLAHE(clip_limit=3.0, tile_grid_size=(8, 8)),
         ])
-        self.global_transform = A.Compose(
-            [
-                A.RandomResizedCrop(size=(global_crop , global_crop)),
-                A.HorizontalFlip(p=0.5),
-                A.RandomRotate90(p=0.5),
-                A.OneOf(
-                    [
-                        A.RandomBrightnessContrast(
-                            brightness_limit=0.2,
-                            contrast_limit=0.2,
-                            p=1
-                            ),
-                        A.ColorJitter(
-                            brightness=0.2,
-                            contrast=0.2,
-                            saturation=0.2,
-                            hue=0.1,
-                            p=1
-                        ),
-                    ] , p=0.8),
-                
-                A.OneOf(
-                    [
-                        A.GaussianBlur(blur_limit=(3,7) , p=1),
-                        A.GaussNoise(p=1)
-                    ] , p=0.5
-                ),
-                ToTensorV2(),
-            ]
-        )
 
+        # Global augmentation: random crop, flip, rotate, color jitter, blur/noise, then tensor conversion.
+        self.global_transform = transforms.Compose([
+            transforms.RandomResizedCrop((global_crop, global_crop)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomApply([RandomRotate90()], p=0.5),
+            transforms.RandomApply([
+                transforms.RandomChoice([
+                    # Option 1: brightness & contrast jitter (mimicking RandomBrightnessContrast)
+                    transforms.ColorJitter(brightness=0.2, contrast=0.2),
+                    # Option 2: ColorJitter with saturation and hue as well
+                    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)
+                ])
+            ], p=0.8),
+            transforms.RandomApply([
+                transforms.RandomChoice([
+                    RandomGaussianBlur_dino(sigma=(0.1, 2.0)),
+                    GaussNoise(mean=0.0, std=0.1)
+                ])
+            ], p=0.5),
+            transforms.ToTensor(),
+        ])
 
-        self.local_transform = A.Compose(
-            [
-                A.RandomResizedCrop(size=(local_crop , local_crop)),
-                A.HorizontalFlip(p=0.5),
+        # Local augmentation: random crop, flip, slight brightness/contrast jitter, then tensor conversion.
+        self.local_transform = transforms.Compose([
+            transforms.RandomResizedCrop((local_crop, local_crop)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomApply([
+                transforms.ColorJitter(brightness=0.1, contrast=0.1)
+            ], p=0.7),
+            transforms.ToTensor(),
+        ])
 
-                A.RandomBrightnessContrast(brightness_limit=0.1 , contrast_limit=0.1, p=0.7),
-                ToTensorV2(),
-            ]
-        )
+    def __call__(self, image):
+        # If the image is a numpy array, convert it to a PIL Image.
+        if not isinstance(image, Image.Image):
+            image = Image.fromarray(image)
 
+        # Apply the base transform (resize + CLAHE)
+        prep_basic = self.base_transform(image)
 
-    def __call__(self , image):
         views = []
-
-        if isinstance(image , Image.Image):
-            image = np.array(image)
-
-
-        # base transforms -> apply clahe
-        prep_basic = self.base_transform(image=image)['image']
-
-        # global transformation
+        # Create two global views
         for _ in range(2):
-            aug = self.global_transform(prep_basic)
-            views.append(aug['image'])
-
-        # local transformation
+            views.append(self.global_transform(prep_basic))
+        # Create n local views
         for _ in range(self.n_crops_local):
-            aug = self.local_transform(prep_basic)
-            views.append(aug['image'])
-
+            views.append(self.local_transform(prep_basic))
 
         return views
+
 #--------------------------------------------------------------------------------------------
 
 class GaussianNoiseTransform:
@@ -174,22 +215,24 @@ class IJEPAAugmentation:
     def __init__(self , img_size):
         self.pil_transforms = transforms.Compose([
             transforms.Resize((img_size, img_size)),
+            CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
             transforms.RandomApply(
                 [transforms.ColorJitter(brightness=0.1, contrast=0.1)],
                 p=0.5
             ),
-            transforms.RandomApply(
-                [transforms.ColorJitter(hue=5/360, saturation=0.1, brightness=0.05)],
-                p=0.3
-            )
+            # transforms.RandomApply(
+            #     [transforms.ColorJitter(hue=5/360, saturation=0.1, brightness=0.05)],
+            #     p=0.3
+            # )
         ])
         self.tensor_transforms = transforms.Compose([
-            transforms.RandomApply([
-                transforms.RandomChoice([
-                    GaussianNoiseTransform((10.0, 50.0)),
-                    MultiplicativeNoiseTransform((0.95, 1.05))
-                ])
-            ], p=0.3),
+            # transforms.RandomApply([
+            #     transforms.RandomChoice([
+            #         GaussianNoiseTransform((10.0, 50.0)),
+            #         MultiplicativeNoiseTransform((0.95, 1.05))
+            #     ])
+            # ], p=0.3),
+            
             transforms.RandomApply([
                 transforms.RandomChoice([
                     transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
@@ -247,7 +290,7 @@ class RandomGaussianBlur:
         return tensor
 
 # Custom Transform: Coarse Dropout (expects a tensor)
-class CoarseDropout:
+class CoarseDropout_ibot:
     def __init__(self, num_holes_range=(1, 8), hole_height_range=(12, 32), 
                  hole_width_range=(12, 32), fill=0, p=0.5):
         self.num_holes_range = num_holes_range
@@ -329,7 +372,7 @@ class IbotRetAug:
             transforms.RandomApply([
                 transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2)
             ], p=0.8),
-            CoarseDropout(
+            CoarseDropout_ibot(
                 num_holes_range=(1, 8),
                 hole_height_range=(12, 32),
                 hole_width_range=(12, 32),
@@ -534,22 +577,27 @@ class CoarseDropout(object):
 class DinowregAug:
     def __init__(self, img_size=1024):
         # View 1 pipeline (mimicking the Albumentations view1)
+        self.base_transform = transforms.Compose([
+            transforms.Resize((img_size, img_size)),
+            CLAHE(clip_limit=3.0, tile_grid_size=(8, 8)),
+        ])
         self.view1_transform = transforms.Compose([
             transforms.Resize((img_size, img_size)),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomVerticalFlip(p=0.5),
             RandomRotate90(p=0.5),
+            CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
             transforms.RandomApply([
                 transforms.RandomChoice([
                     GaussianBlurTransform(blur_limit=(3, 7)),
-                    GaussNoiseTransform(var_limit=(10.0, 50.0))
+                    # GaussNoiseTransform(var_limit=(10.0, 50.0))
                 ])
             ], p=0.4),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2,
-                                   saturation=0.2, hue=0.1),
+            # transforms.ColorJitter(brightness=0.2, contrast=0.2,
+                                #    saturation=0.2, hue=0.1),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225]),
+            # transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                #  std=[0.229, 0.224, 0.225]),
         ])
 
         # View 2 pipeline (lesion-focused augmentation)
@@ -558,24 +606,23 @@ class DinowregAug:
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomVerticalFlip(p=0.5),
             RandomRotate90(p=0.5),
+            CLAHE(clip_limit=3.0, tile_grid_size=(8, 8)),
             transforms.RandomApply([
                 transforms.RandomChoice([
-                    ElasticTransform(alpha=50, sigma=7, alpha_affine=10),
-                    OpticalDistortion(distort_limit=0.5, shift_limit=0.5),
+                    # ElasticTransform(alpha=50, sigma=7, alpha_affine=10),
+                    # OpticalDistortion(distort_limit=0.5, shift_limit=0.5),
                     RandomSizedCrop(min_max_height=(32, 64), size=(img_size, img_size))
                 ])
             ], p=0.5),
             CoarseDropout(max_holes=8, max_height=32, max_width=32,
                           fill_value=0, p=0.5),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225]),
+            # transforms.Normalize(mean=[0.485, 0.456, 0.406],
+            #                      std=[0.229, 0.224, 0.225]),
         ])
 
     def __call__(self, image):
-        # If the input image is a torch.Tensor, convert it to a PIL Image.
         if isinstance(image, torch.Tensor):
-            # If in CHW format assume 3 channels.
             if image.dim() == 3 and image.shape[0] == 3:
                 image = transforms.ToPILImage()(image)
             else:
@@ -583,7 +630,6 @@ class DinowregAug:
 
         elif isinstance(image, np.ndarray):
             image = Image.fromarray(image)
-    
         view1 = self.view1_transform(image)
         view2 = self.view2_transform(image)
         return view1, view2
