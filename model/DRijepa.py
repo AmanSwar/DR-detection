@@ -383,7 +383,7 @@ if __name__ == "__main__":
     dataset_names = ["eyepacs" , "aptos" , "ddr" , "idrid" , "messdr"]
     uniform_data_ld = data_set.SSLTrainLoader(
         dataset_names=dataset_names,
-        transformation=data_aug.IJEPAAugmentation(),
+        transformation=data_aug.IJEPAAugmentation(img_size=vit_config["img_size"]),
         batch_size=BATCH_SIZE,
         num_workers=4,
     )
