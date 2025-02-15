@@ -141,7 +141,7 @@ class DINOAugmentation:
 
 #--------------------------------------------------------------------------------------------
 
-class GaussianNoiseTransform:
+class GaussianNoiseTransform_ijepa:
     def __init__(self, var_limit=(10.0, 50.0)):
         self.var_limit = var_limit
 
@@ -150,14 +150,14 @@ class GaussianNoiseTransform:
         std = math.sqrt(var) / 255.0
         return img + torch.randn_like(img) * std
 
-class MultiplicativeNoiseTransform:
+class MultiplicativeNoiseTransform_ijepa:
     def __init__(self, multiplier=(0.95, 1.05)):
         self.multiplier = multiplier
 
     def __call__(self, img):
         return img * random.uniform(*self.multiplier)
 
-class MedianBlurTransform:
+class MedianBlurTransform_ijepa:
     def __init__(self, blur_limit=3):
         self.blur_limit = blur_limit
 
@@ -166,7 +166,7 @@ class MedianBlurTransform:
         img_pil = img_pil.filter(ImageFilter.MedianFilter(self.blur_limit))
         return TF.to_tensor(img_pil)
 
-class SharpenTransform:
+class SharpenTransform_ijepa:
     def __init__(self, alpha=(0.2, 0.5), lightness=(0.5, 1.0)):
         self.alpha = alpha
         self.lightness = lightness
@@ -179,7 +179,7 @@ class SharpenTransform:
         factor = lightness + alpha * (lightness - 1.0)
         return TF.to_tensor(enhancer.enhance(factor))
 
-class UnsharpMaskTransform:
+class UnsharpMaskTransform_ijepa:
     def __init__(self, blur_limit=(3, 7)):
         self.blur_limit = blur_limit
 
@@ -237,13 +237,13 @@ class IJEPAAugmentation:
             transforms.RandomApply([
                 transforms.RandomChoice([
                     transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
-                    MedianBlurTransform(3)
+                    MedianBlurTransform_ijepa(3)
                 ])
             ], p=0.2),
             transforms.RandomApply([
                 transforms.RandomChoice([
-                    SharpenTransform((0.2, 0.5), (0.5, 1.0)),
-                    UnsharpMaskTransform((3, 7))
+                    SharpenTransform_ijepa((0.2, 0.5), (0.5, 1.0)),
+                    UnsharpMaskTransform_ijepa((3, 7))
                 ])
             ], p=0.3),
             CoarseDropout_ijepa(p=0.2)
