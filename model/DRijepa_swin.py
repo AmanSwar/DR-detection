@@ -8,6 +8,8 @@ import timm  # make sure to install timm: pip install timm
 from model.utils import RearrangeAndLayerNorm , vit_config
 import os
 
+from model.utils import swin_config
+
 wandb.init()
 class IJEPALoss(nn.Module):
     def __init__(self):
@@ -345,7 +347,7 @@ if __name__ == "__main__":
     data_ld = uniform_data_ld.get_loader()
 
     model, loss_fn = create_DRijepa(
-        img_size=224,
+        img_size=swin_config["img_size"],
         model_name='swin_base_patch4_window7_224',
         n_box=6,
         dropout=0.1
