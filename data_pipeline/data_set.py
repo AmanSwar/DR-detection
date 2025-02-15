@@ -326,8 +326,12 @@ class UnitedSSLTrainingDataset(Dataset):
             return img
         except (IOError, FileNotFoundError) as e:
             raise RuntimeError(f"Failed to load image {img_path}: {str(e)}")
+        except OSError as e:
+            print(f"Warning: Failed to load image {img_path}. Skipping. Error: {e}")
+            return None
         except Exception as e:
             raise RuntimeError(f"Unexpected error loading {img_path}: {str(e)}")
+        
         
 
 
