@@ -348,17 +348,17 @@ if __name__ == "__main__":
     from data_pipeline.data_set import SSLTrainLoader , SSLValidLoader
     from data_pipeline.data_aug import IJEPAAugmentation
     dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"]
-    augmentor = IJEPAAugmentation(img_size=256)
+    transforms_ = IJEPAAugmentation(img_size=256)
     train_loader = SSLTrainLoader(
         dataset_names=dataset_names,
-        transformation=augmentor,
+        transformation=transforms_,
         batch_size=48,
         num_work=4,
     ).get_loader()
 
     valid_loader = SSLValidLoader(
         dataset_names=dataset_names,
-        transformation=augmentor,
+        transformation=transforms_,
         batch_size=8,
         num_work=4,
     ).get_loader()
