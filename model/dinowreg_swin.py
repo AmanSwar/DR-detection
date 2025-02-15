@@ -15,12 +15,15 @@ from data_pipeline.data_aug import DinowregAug
 from data_pipeline.data_set import UniformTrainDataloader, SSLTrainLoader, SSLValidLoader
 from model.utils import vit_config, vit_test_config, swin_test_config, swin_config
 
-device = torch.device('cuda:0')
-free, total = torch.cuda.mem_get_info(device)
-print(f"Total GPU memory: {total} bytes")
-print(f"Free GPU memory: {free} bytes")
+def get_mem_info():
+    device = torch.device('cuda:0')
+    free, total = torch.cuda.mem_get_info(device)
+    print("\n")
+    print(f"Total GPU memory: {total} bytes")
+    print(f"Free GPU memory: {free} bytes")
+    print("\n")
 
-
+get_mem_info()
 
 # -----------------------------------------------------------------------------
 # Helper Functions
@@ -594,6 +597,7 @@ if __name__ == "__main__":
         num_work=4,
     ).get_loader()
 
+    get_mem_info()
     max_epoch = 300
     train_single_gpu(train_dl=train_loader, valid_dl=valid_loader, b_size=32, max_epoch=max_epoch)
     # To run DDP training instead, call train_ddp(args)
