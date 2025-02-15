@@ -247,7 +247,48 @@ class UniformTrainDataloader:
     def get_loader(self):
         return self.train_loader
     
+class UniformValidDataloader:
 
+    def __init__(
+            
+            self ,
+            dataset_names: List,
+            transformation , 
+            batch_size: int,
+            num_workers: int,
+            sampler=True
+            
+            ):
+        
+        self.dataset_names = dataset_names
+        self.sampler = sampler 
+        self.transformation = transformation
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        validation_ds = UnitedValidationDataset(*self.dataset_names , transformation=self.transformation)
+        
+        if sampler:
+            
+
+            labels_np = np.array(validation_ds.get_labels())
+            class_counts = Counter(labels_np)
+
+            total_samples = len(labels_np)
+
+            # class weights -> less number of class -> more weightage
+            class_weights = {cls: total_samples/count for cls , count in class_counts.items()}
+
+            sample_weight = [class_weights[label] for label in labels_np]
+            weight_tensor = torch.DoubleTensor(sample_weight)
+
+            sampler = WeightedRandomSampler(weights=weight_tensor , num_samples=len(weight_tensor) , replacement=True)
+
+            self.sampler = sampler
+
+        self.train_loader = DataLoader(dataset=validation_ds ,sampler=sampler ,batch_size=self.batch_size , pin_memory=True , num_workers=self.num_workers)
+
+    def get_loader(self):
+        return self.train_loader
 
 class UnitedSSLTrainingDataset(Dataset):
 
