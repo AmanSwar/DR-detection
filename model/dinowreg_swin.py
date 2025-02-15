@@ -15,6 +15,13 @@ from data_pipeline.data_aug import DinowregAug
 from data_pipeline.data_set import UniformTrainDataloader, SSLTrainLoader, SSLValidLoader
 from model.utils import vit_config, vit_test_config, swin_test_config, swin_config
 
+device = torch.device('cuda:0')
+free, total = torch.cuda.mem_get_info(device)
+print(f"Total GPU memory: {total} bytes")
+print(f"Free GPU memory: {free} bytes")
+
+
+
 # -----------------------------------------------------------------------------
 # Helper Functions
 # -----------------------------------------------------------------------------
