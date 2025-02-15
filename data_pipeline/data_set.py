@@ -10,7 +10,7 @@ from PIL import Image
 from typing import Tuple , List
 
 import numpy as np
-
+from collections import Counter
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
@@ -33,8 +33,11 @@ class UnitedTrainingDataset(Dataset):
         #logic for shuffling
         img_path_label_pair = list(zip(self.image_path , self.labels))
         random.shuffle(img_path_label_pair)
+        random.shuffle(img_path_label_pair)
+        random.shuffle(img_path_label_pair)
+        random.shuffle(img_path_label_pair)
         self.image_path , self.labels = map(list , zip(*img_path_label_pair))
-
+        
     def __getdata(self , dataset_name: str) -> Tuple[List[str] , List[int]]:
 
         if dataset_name not in ["eyepacs" , "aptos" ,"ddr" , "idrid" , "messdr"]:
@@ -83,6 +86,19 @@ class UnitedTrainingDataset(Dataset):
         """
         return self.labels
 
+    def get_num_class(self):
+
+        unqiue_label = Counter(self.labels)
+
+        # for i in unqiue_label:
+        #     if i not in unqiue_label.keys():
+        #         unqiue_label[i] = 1
+            
+        #     else:
+        #         unqiue_label[i] += 1
+
+        return unqiue_label
+
         
     def __len__(self):
         return len(self.image_path)
@@ -129,6 +145,8 @@ class UnitedValidationDataset(Dataset):
         img_path_label_pair = list(zip(self.image_path , self.labels))
         random.shuffle(img_path_label_pair)
         self.image_path , self.labels = zip(*img_path_label_pair)
+        print("shuffled")
+        print("\n")
 
     def __getdata(self , dataset_name: str) -> list:
 
@@ -206,7 +224,7 @@ class UniformTrainDataloader:
         training_dataset = UnitedTrainingDataset(*self.dataset_names , transformation=self.transformation)
         
         if sampler:
-            from collections import Counter
+            
 
             labels_np = np.array(training_dataset.get_labels())
             class_counts = Counter(labels_np)
@@ -347,7 +365,7 @@ class UnitedSSLValidationDataset(Dataset):
            
 
         elif dataset_name.lower() == "ddr":
-            ddr = DdrSSLDataset(root_dir="data/ddr")
+            ddr = DdrSSLDataset(dataset_path="data/ddr")
             ddr_train_img = ddr.get_validation()
             
             return ddr_train_img 
