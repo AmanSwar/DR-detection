@@ -583,17 +583,17 @@ if __name__ == "__main__":
     train_loader = SSLTrainLoader(
         dataset_names=dataset_names,
         transformation=augmentor,
-        batch_size=64,
+        batch_size=32,
         num_work=4,
     ).get_loader()
 
     valid_loader = SSLValidLoader(
         dataset_names=dataset_names,
         transformation=augmentor,
-        batch_size=64,
+        batch_size=32,
         num_work=4,
     ).get_loader()
 
     max_epoch = 300
-    train_single_gpu(train_dl=train_loader, valid_dl=valid_loader, b_size=64, max_epoch=max_epoch)
+    train_single_gpu(train_dl=train_loader, valid_dl=valid_loader, b_size=32, max_epoch=max_epoch)
     # To run DDP training instead, call train_ddp(args)
