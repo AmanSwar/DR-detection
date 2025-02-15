@@ -609,6 +609,6 @@ if __name__ == "__main__":
 
     get_mem_info()
     max_epoch = 300
-    # train_single_gpu(train_dl=train_loader, valid_dl=valid_loader, b_size=48, max_epoch=max_epoch)
+    train_single_gpu(train_dl=train_loader, valid_dl=valid_loader, b_size=48, max_epoch=max_epoch)
     # To run DDP training instead, call train_ddp(args)
-    train_ddp()
+    # train_ddp()
