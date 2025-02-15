@@ -11,7 +11,7 @@ import torch.multiprocessing as mp
 import wandb  # <-- Import wandb
 
 from data_pipeline.data_aug import DinowregAug 
-from data_pipeline.data_set import UniformTrainDataloader, SSLTrainLoader, SSLValidLoader
+from data_pipeline.data_set import SSLTrainLoader, SSLValidLoader , DistSSLTrainLoader , DistSSLValidLoader
 from model.utils import vit_config, vit_test_config, swin_test_config, swin_config
 
 def get_mem_info():
@@ -491,21 +491,22 @@ def ddp_main_worker(rank, world_size):
     dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"]
 
     # Use SSLTrainLoader (which should support distributed sampling when sampler=True)
-    train_loader = SSLTrainLoader(
+    train_loader = DistSSLTrainLoader(
         dataset_names=dataset_names,
         transformation=augmentor,
         batch_size=batch_size,
         num_work=4,
-        sampler=True
+        world_size=world_size
     ).get_loader()
     # If a DistributedSampler is used, set the epoch each time.
     sampler = train_loader.sampler if hasattr(train_loader, 'sampler') else None
 
-    valid_loader = SSLValidLoader(
+    valid_loader = DistSSLValidLoader(
         dataset_names=dataset_names,
         transformation=augmentor,
         batch_size=8,
         num_work=4,
+        world_size=world_size,
     ).get_loader()
 
     scaler = torch.cuda.amp.GradScaler()
@@ -582,7 +583,7 @@ def train_ddp():
     world_size = 2  
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
-    mp.spawn(ddp_main_worker, args=(world_size,), nprocs=world_size, join=True)
+    mp.spawn(ddp_main_worker, args=(world_size , ), nprocs=world_size, join=True)
 
 # -----------------------------------------------------------------------------
 # Main entry point
