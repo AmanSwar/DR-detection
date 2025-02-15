@@ -436,6 +436,38 @@ class SSLTrainLoader:
     def get_loader(self):
         return self.train_loader
     
+from torch.utils.data import DataLoader, DistributedSampler
+
+class DistSSLTrainLoader:
+    def __init__(self, dataset_names, transformation, batch_size, num_work, world_size=2, rank=0):
+        self.dataset_names = dataset_names
+        self.transformation = transformation
+        self.batch_size = batch_size
+        self.num_workers = num_work
+
+        # Create the dataset
+        training_dataset = UnitedSSLTrainingDataset(*self.dataset_names, transformation=self.transformation)
+        
+        # Use DistributedSampler
+        self.sampler = DistributedSampler(training_dataset, num_replicas=world_size, rank=rank, shuffle=True)
+        
+        # Create DataLoader
+        self.train_loader = DataLoader(
+            dataset=training_dataset,
+            batch_size=self.batch_size,
+            pin_memory=True,
+            num_workers=self.num_workers,
+            sampler=self.sampler  # Use DistributedSampler
+        )
+
+    def get_loader(self):
+        return self.train_loader
+
+    def set_epoch(self, epoch):
+        """Ensure data is shuffled differently each epoch."""
+        self.sampler.set_epoch(epoch)
+
+
 
 class SSLValidLoader:
 
@@ -466,3 +498,36 @@ class SSLValidLoader:
     def get_loader(self):
         return self.valid_loader
     
+class DistSSLValidLoader:
+    def __init__(self, dataset_names, transformation, batch_size, num_work, world_size=1, rank=0):
+        self.dataset_names = dataset_names
+        self.transformation = transformation
+        self.batch_size = batch_size
+        self.num_workers = num_work
+
+        validation_dataset = UnitedSSLValidationDataset(
+            *self.dataset_names,
+            transformation=self.transformation
+        )
+
+        # Create a distributed sampler for validation. Note that shuffle is set to False.
+        self.sampler = DistributedSampler(validation_dataset, num_replicas=world_size, rank=rank, shuffle=False)
+
+        self.valid_loader = DataLoader(
+            dataset=validation_dataset,
+            batch_size=self.batch_size,
+            pin_memory=True,
+            num_workers=self.num_workers,
+            sampler=self.sampler
+        )
+
+    def get_loader(self):
+        return self.valid_loader
+
+    def set_epoch(self, epoch):
+        """
+        Although shuffling isn't necessary for validation, if you want to ensure
+        a deterministic ordering per epoch (or if you decide to enable shuffle later),
+        you can call this method each epoch.
+        """
+        self.sampler.set_epoch(epoch)
