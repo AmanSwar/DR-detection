@@ -14,6 +14,7 @@ from collections import Counter
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
+from data_pipeline.data_aug import DinowregAug
 
 class UnitedTrainingDataset(Dataset):
 
@@ -439,9 +440,9 @@ class SSLTrainLoader:
 from torch.utils.data import DataLoader, DistributedSampler
 
 class DistSSLTrainLoader:
-    def __init__(self, dataset_names, transformation, batch_size, num_work, world_size=2, rank=0):
+    def __init__(self, dataset_names, img_size, batch_size, num_work, world_size=2, rank=0):
         self.dataset_names = dataset_names
-        self.transformation = transformation
+        self.transformation = DinowregAug(img_size=img_size)
         self.batch_size = batch_size
         self.num_workers = num_work
 
@@ -499,9 +500,9 @@ class SSLValidLoader:
         return self.valid_loader
     
 class DistSSLValidLoader:
-    def __init__(self, dataset_names, transformation, batch_size, num_work, world_size=1, rank=0):
+    def __init__(self, dataset_names, img_size, batch_size, num_work, world_size=1, rank=0):
         self.dataset_names = dataset_names
-        self.transformation = transformation
+        self.transformation = DinowregAug(img_size=img_size)
         self.batch_size = batch_size
         self.num_workers = num_work
 
