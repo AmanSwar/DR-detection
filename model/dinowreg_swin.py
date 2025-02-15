@@ -590,7 +590,7 @@ if __name__ == "__main__":
     valid_loader = SSLValidLoader(
         dataset_names=dataset_names,
         transformation=augmentor,
-        batch_size=32,
+        batch_size=8,
         num_work=4,
     ).get_loader()
 
