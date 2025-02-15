@@ -58,15 +58,15 @@ swin_test_config = {
 
 swin_config = {
     "img_size": 512,
-    "patch_size": 4,
-    "embed_dim": 128,
-    "depths": [2, 2, 18, 2],
-    "num_heads": [4, 8, 16, 32],
+    "patch_size": 8,
+    "embed_dim": 96,
+    "depths": [2, 2, 6, 2],
+    "num_heads": [3, 6, 12, 24],
     "window_size": 7,
     "num_regs": 8,
-    "transformer_embed_dim": 1024,
-    "transformer_heads": 16,
-    "num_transformer_layers": 4
+    "transformer_embed_dim": 512,
+    "transformer_heads": 8,
+    "num_transformer_layers": 2
 }
 
 """
