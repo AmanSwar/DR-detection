@@ -1,5 +1,4 @@
 import os
-import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -405,38 +404,45 @@ def train_single_gpu(train_dl, valid_dl, b_size, max_epoch, autocast=False):
 # -----------------------------------------------------------------------------
 # DDP training with wandb logging, validation & checkpoint support (rank 0 logs)
 # -----------------------------------------------------------------------------
-def ddp_main_worker(rank, world_size, args):
+def ddp_main_worker(rank, world_size):
+    # Initialize distributed process group
     dist.init_process_group(backend='nccl', init_method='env://',
                             world_size=world_size, rank=rank)
     torch.cuda.set_device(rank)
     device = torch.device(f'cuda:{rank}')
+
+    # Use the same hyperparameters as single-GPU training.
+    img_size = swin_config["img_size"]
+    patch_size = swin_config["patch_size"]
+    embed_dim = swin_config["embed_dim"]
+    warmup_epochs = 2
+    # Use the provided max_epoch from args (or default to 300)
+    max_epochs = 300
+    weight_decay = 0.04
+    momentum = 0.9998
+    batch_size = 32  # per GPU; same as single-GPU batch size
+    num_registers = swin_config["num_regs"]
+    base_lr = 0.0001
+
+    # Only rank 0 initializes wandb.
     if rank == 0:
         print(f"Running DDP training on {world_size} GPUs.")
         wandb.init(
             project="retina-dino",
             config={
-                "img_size": 512,
-                "patch_size": 32,
-                "embed_dim": 1024,
-                "warmup_epochs": 5,
-                "max_epochs": 50,
-                "weight_decay": 0.05,
-                "momentum": 0.9996,
-                "batch_size": 32,
+                "img_size": img_size,
+                "patch_size": patch_size,
+                "embed_dim": embed_dim,
+                "warmup_epochs": warmup_epochs,
+                "max_epochs": max_epochs,
+                "weight_decay": weight_decay,
+                "momentum": momentum,
+                "batch_size": batch_size,
+                "base_lr": base_lr,
+                "autocast": True
             },
             name=f"ddp_run_{wandb.util.generate_id()}"
         )
-
-    # Hyperparameters
-    img_size = 512
-    patch_size = 32
-    embed_dim = 1024
-    warmup_epochs = 5
-    max_epochs = 50
-    weight_decay = 0.05
-    momentum = 0.9996
-    batch_size = 32  # per GPU
-    num_registers = 8
 
     # Initialize model.
     model = RetinaDINO(
@@ -447,10 +453,12 @@ def ddp_main_worker(rank, world_size, args):
         num_registers=num_registers
     ).to(device)
 
+    # Wrap only the student with DDP.
     model.student = torch.nn.parallel.DistributedDataParallel(
         model.student, device_ids=[rank], output_device=rank
     )
 
+    # Setup optimizer (using the same parameter grouping as in single-GPU training).
     decay_params = []
     no_decay_params = []
     for name, param in model.student.module.named_parameters():
@@ -458,7 +466,6 @@ def ddp_main_worker(rank, world_size, args):
             no_decay_params.append(param)
         else:
             decay_params.append(param)
-    base_lr = 0.0003 * (batch_size / 256)
     optimizer = torch.optim.AdamW([
         {'params': decay_params, 'weight_decay': weight_decay},
         {'params': no_decay_params, 'weight_decay': 0.0}
@@ -479,27 +486,27 @@ def ddp_main_worker(rank, world_size, args):
             optimizer, T_max=max_epochs, eta_min=1e-6
         )
 
-    # Prepare dataloaders.
-    augmentor = DinowregAug(img_size=vit_config['img_size'])
-    dataset_names = ["eyepacs", "aptos", "ddr", "idrid"]
-    uniform_data_ld = UniformTrainDataloader(
+    # Prepare dataloaders using the same settings as single-GPU training.
+    augmentor = DinowregAug(img_size=img_size)
+    dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"]
+
+    # Use SSLTrainLoader (which should support distributed sampling when sampler=True)
+    train_loader = SSLTrainLoader(
         dataset_names=dataset_names,
         transformation=augmentor,
         batch_size=batch_size,
-        num_workers=2,
+        num_work=4,
         sampler=True
-    )
-    train_loader = uniform_data_ld.get_loader()
+    ).get_loader()
+    # If a DistributedSampler is used, set the epoch each time.
     sampler = train_loader.sampler if hasattr(train_loader, 'sampler') else None
 
-    # Also create a validation loader.
-    valid_ld = SSLValidLoader(
+    valid_loader = SSLValidLoader(
         dataset_names=dataset_names,
         transformation=augmentor,
-        batch_size=batch_size,
-        num_work=2
-    )
-    valid_loader = valid_ld.get_loader()
+        batch_size=8,
+        num_work=4,
+    ).get_loader()
 
     scaler = torch.cuda.amp.GradScaler()
     global_step = 0
@@ -529,6 +536,7 @@ def ddp_main_worker(rank, world_size, args):
                         teacher_cat = torch.cat([t_cls1, t_cls2], dim=0)
                         center_update = teacher_cat.mean(dim=0, keepdim=True)
                         model.dino_loss.center = model.dino_loss.center * 0.9 + center_update * 0.1
+                        # Synchronize the center across GPUs
                         dist.all_reduce(model.dino_loss.center, op=dist.ReduceOp.SUM)
                         model.dino_loss.center /= dist.get_world_size()
                 scaler.scale(loss).backward()
@@ -569,11 +577,12 @@ def ddp_main_worker(rank, world_size, args):
         wandb.finish()
     dist.destroy_process_group()
 
-def train_ddp(args):
-    world_size = 2  # For example, 2 GPUs
+def train_ddp():
+    # Adjust world_size as needed (here we use 2 GPUs as an example)
+    world_size = 2  
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
-    mp.spawn(ddp_main_worker, args=(world_size, args), nprocs=world_size, join=True)
+    mp.spawn(ddp_main_worker, args=(world_size), nprocs=world_size, join=True)
 
 # -----------------------------------------------------------------------------
 # Main entry point
@@ -601,3 +610,4 @@ if __name__ == "__main__":
     max_epoch = 300
     train_single_gpu(train_dl=train_loader, valid_dl=valid_loader, b_size=48, max_epoch=max_epoch)
     # To run DDP training instead, call train_ddp(args)
+    train_ddp()
