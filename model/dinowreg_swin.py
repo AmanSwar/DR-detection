@@ -18,7 +18,7 @@ import torch.multiprocessing as mp
 
 from data_pipeline.data_aug import DinowregAug 
 from data_pipeline.data_set import UniformTrainDataloader , SSLTrainLoader ,SSLValidLoader
-from model.utils import vit_config , vit_test_config , swin_test_config 
+from model.utils import vit_config , vit_test_config , swin_test_config , swin_config
 
 class SwinRegs(nn.Module):
     def __init__(
@@ -203,9 +203,9 @@ def train_single_gpu(train_dl , b_size , max_epoch,autocast=False):
     print(f"Using device: {device}")
 
     # Hyperparameters (you can also read these from args)
-    img_size = vit_test_config["img_size"]
-    patch_size = vit_test_config["patch_size"]
-    embed_dim = vit_test_config["embed_dim"]
+    img_size = swin_config["img_size"]
+    patch_size = swin_config["patch_size"]
+    embed_dim = swin_config["embed_dim"]
     warmup_epochs = 2
     max_epochs = 50
     weight_decay = 0.04
@@ -218,7 +218,7 @@ def train_single_gpu(train_dl , b_size , max_epoch,autocast=False):
         patch_size=patch_size,
         embed_dim=embed_dim,
         momentum=momentum,
-        num_registers=vit_config["num_regs"]
+        num_registers=swin_config["num_regs"]
     ).to(device)
 
 # ---------------------------------------------------------------------------
@@ -480,7 +480,7 @@ def train_ddp(args):
     mp.spawn(ddp_main_worker, args=(world_size, args), nprocs=world_size, join=True)
 
 if __name__ == "__main__":
-    augmentor = DinowregAug(img_size=vit_config['img_size'])
+    augmentor = DinowregAug(img_size=swin_config['img_size'])
     dataset_names = ["eyepacs", "aptos", "ddr", "idrid" , "messdr"]
 
 
@@ -493,4 +493,4 @@ if __name__ == "__main__":
 
     data_ld = train_loader.get_loader()
 
-    train_single_gpu(train_dl=data_ld , b_size=32)
+    train_single_gpu(train_dl=data_ld , b_size=64)
