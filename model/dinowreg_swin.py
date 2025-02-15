@@ -1,25 +1,59 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from einops import rearrange
-from torchvision.models.swin_transformer import SwinTransformer
-
 import os
 import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
+from torchvision.models.swin_transformer import SwinTransformer
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import torch.distributed as dist
 import torch.multiprocessing as mp
-
+import wandb  # <-- Import wandb
 
 from data_pipeline.data_aug import DinowregAug 
-from data_pipeline.data_set import UniformTrainDataloader , SSLTrainLoader ,SSLValidLoader
-from model.utils import vit_config , vit_test_config , swin_test_config , swin_config
+from data_pipeline.data_set import UniformTrainDataloader, SSLTrainLoader, SSLValidLoader
+from model.utils import vit_config, vit_test_config, swin_test_config, swin_config
 
+# -----------------------------------------------------------------------------
+# Helper Functions
+# -----------------------------------------------------------------------------
+def validate_model(model, valid_loader, device):
+    """Run a validation loop and return average loss."""
+    model.eval()
+    total_loss = 0.0
+    count = 0
+    with torch.no_grad():
+        for batch in valid_loader:
+            x1, x2 = batch
+            x1 = x1.to(device)
+            x2 = x2.to(device)
+            # Forward passes for both student and teacher
+            s_cls1, s_patch1, s_reg1 = model.student(x1)
+            s_cls2, s_patch2, s_reg2 = model.student(x2)
+            t_cls1, t_patch1, t_reg1 = model.teacher(x1)
+            t_cls2, t_patch2, t_reg2 = model.teacher(x2)
+            loss1 = model.dino_loss(s_cls1, t_cls2, (s_reg1, t_reg2))
+            loss2 = model.dino_loss(s_cls2, t_cls1, (s_reg2, t_reg1))
+            loss = (loss1 + loss2) / 2
+            total_loss += loss.item()
+            count += 1
+    avg_loss = total_loss / count if count > 0 else 0.0
+    return avg_loss
+
+def save_checkpoint(model, optimizer, epoch, filename):
+    """Save a checkpoint of the current model and optimizer state."""
+    checkpoint = {
+        "epoch": epoch,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+    }
+    torch.save(checkpoint, filename)
+    print(f"Checkpoint saved to {filename}")
+
+# -----------------------------------------------------------------------------
+# Model definitions
+# -----------------------------------------------------------------------------
 class SwinRegs(nn.Module):
     def __init__(
         self,
@@ -39,11 +73,11 @@ class SwinRegs(nn.Module):
         super().__init__()
         # Swin backbone configuration
         self.swin = SwinTransformer(
-            patch_size=(patch_size , patch_size),
+            patch_size=(patch_size, patch_size),
             embed_dim=embed_dim,
             depths=depths,
             num_heads=num_heads,    
-            window_size=(window_size , window_size),
+            window_size=(window_size, window_size),
             mlp_ratio=mlp_ratio,
         )
         self.swin.head = nn.Identity()  # Remove classification head
@@ -95,10 +129,8 @@ class SwinRegs(nn.Module):
         
         # Swin backbone features
         features = self.swin.features(x) 
-        # x = x.permute(0, 2, 3, 1)  # (B, H, W, C)
         x = features.reshape(B, self.final_dim, -1).transpose(1, 2)
-        x = self.proj(x)  # (B, H, W, transformer_dim)
-        x = x.reshape(B, -1, x.shape[-1])  # (B, num_patches, transformer_dim)
+        x = self.proj(x)  # (B, num_patches, transformer_dim)
         
         # Add tokens
         cls_tokens = self.cls_token.expand(B, -1, -1)
@@ -134,7 +166,6 @@ class RetinaDINO(nn.Module):
         num_registers=swin_test_config["num_regs"],
     ):
         super().__init__()
-        
         
         self.student = SwinRegs(**swin_test_config)
         self.teacher = SwinRegs(**swin_test_config)
@@ -193,24 +224,42 @@ class DINOLoss(nn.Module):
         reg_loss = F.mse_loss(s_reg, t_reg.detach())
         
         return loss + self.reg_weight * reg_loss
-    
 
-def train_single_gpu(train_dl , b_size , max_epoch,autocast=False):
-
-# ---------------------------------------------------------------------------
-# INIT
+# -----------------------------------------------------------------------------
+# Single-GPU training with wandb logging, validation & checkpoint support
+# -----------------------------------------------------------------------------
+def train_single_gpu(train_dl, valid_dl, b_size, max_epoch, autocast=False):
+    # -------------------------------------------------------------------------
+    # INIT
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
-    # Hyperparameters (you can also read these from args)
     img_size = swin_config["img_size"]
     patch_size = swin_config["patch_size"]
     embed_dim = swin_config["embed_dim"]
     warmup_epochs = 2
-    max_epochs = 50
+    max_epochs = max_epoch  # use provided max_epoch
     weight_decay = 0.04
     momentum = 0.9998
     batch_size = b_size
+
+    # Initialize wandb run
+    wandb.init(
+        project="retina-dino",
+        config={
+            "img_size": img_size,
+            "patch_size": patch_size,
+            "embed_dim": embed_dim,
+            "warmup_epochs": warmup_epochs,
+            "max_epochs": max_epochs,
+            "weight_decay": weight_decay,
+            "momentum": momentum,
+            "batch_size": batch_size,
+            "base_lr": 0.0001,
+            "autocast": autocast
+        },
+        name=f"single_gpu_run_{wandb.util.generate_id()}"
+    )
 
     # Initialize the model and move to device.
     model = RetinaDINO(
@@ -221,8 +270,10 @@ def train_single_gpu(train_dl , b_size , max_epoch,autocast=False):
         num_registers=swin_config["num_regs"]
     ).to(device)
 
-# ---------------------------------------------------------------------------
-#   OPTIMIZERSS
+    wandb.watch(model.student, log="all", log_freq=100)
+
+    # -------------------------------------------------------------------------
+    # Optimizer & Scheduler
     decay_params = []
     no_decay_params = []
     for name, param in model.student.named_parameters():
@@ -230,14 +281,12 @@ def train_single_gpu(train_dl , b_size , max_epoch,autocast=False):
             no_decay_params.append(param)
         else:
             decay_params.append(param)
-    # base_lr = 0.0003 * (batch_size / 256)
     base_lr = 0.0001
     optimizer = torch.optim.AdamW([
         {'params': decay_params, 'weight_decay': weight_decay},
         {'params': no_decay_params, 'weight_decay': 0.0}
     ], lr=base_lr, betas=(0.9, 0.999))
     
-    # Learning rate scheduler: warmup + cosine annealing.
     if warmup_epochs > 0:
         warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
             optimizer, start_factor=0.01, end_factor=1.0, total_iters=warmup_epochs
@@ -253,101 +302,122 @@ def train_single_gpu(train_dl , b_size , max_epoch,autocast=False):
             optimizer, T_max=max_epochs, eta_min=1e-6
         )
     
-
-# ---------------------------------------------------------------------------
-    # DATALOADER
+    # -------------------------------------------------------------------------
+    # DATALOADERS
     train_loader = train_dl
+    valid_loader = valid_dl
 
-# ---------------------------------------------------------------------------
     scaler = torch.cuda.amp.GradScaler()
 
-# ---------------------------------------------------------------------------
-# TRAINING
-
+    # -------------------------------------------------------------------------
+    # TRAINING LOOP (with KeyboardInterrupt support)
     print("Starting single-GPU training...")
-    for epoch in range(max_epochs):
-        model.train()
-        epoch_loss = 0.0
-        for i, batch in enumerate(train_loader):
-            # 2 views
-            x1, x2 = batch
-            x1 = x1.to(device)
-            x2 = x2.to(device)
-            
-            optimizer.zero_grad()
-            if autocast:
-                with torch.cuda.amp.autocast():
-                    # Student forward pass.
+    global_step = 0
+    try:
+        for epoch in range(max_epochs):
+            model.train()
+            epoch_loss = 0.0
+            for i, batch in enumerate(train_loader):
+                x1, x2 = batch
+                x1 = x1.to(device)
+                x2 = x2.to(device)
+                
+                optimizer.zero_grad()
+                if autocast:
+                    with torch.cuda.amp.autocast():
+                        s_cls1, s_patch1, s_reg1 = model.student(x1)
+                        s_cls2, s_patch2, s_reg2 = model.student(x2)
+                        with torch.no_grad():
+                            model.momentum_update()
+                            t_cls1, t_patch1, t_reg1 = model.teacher(x1)
+                            t_cls2, t_patch2, t_reg2 = model.teacher(x2)
+                        loss1 = model.dino_loss(s_cls1, t_cls2, (s_reg1, t_reg2))
+                        loss2 = model.dino_loss(s_cls2, t_cls1, (s_reg2, t_reg1))
+                        loss = (loss1 + loss2) / 2
+                        with torch.no_grad():
+                            teacher_cat = torch.cat([t_cls1, t_cls2], dim=0)
+                            model.dino_loss.center = model.dino_loss.center * 0.9 + \
+                                teacher_cat.mean(dim=0, keepdim=True) * 0.1
+                    scaler.scale(loss).backward()
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.student.parameters(), 3.0)
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
                     s_cls1, s_patch1, s_reg1 = model.student(x1)
                     s_cls2, s_patch2, s_reg2 = model.student(x2)
-                    
-                    # Teacher forward pass (with no gradient).
                     with torch.no_grad():
                         model.momentum_update()
                         t_cls1, t_patch1, t_reg1 = model.teacher(x1)
                         t_cls2, t_patch2, t_reg2 = model.teacher(x2)
-                    
                     loss1 = model.dino_loss(s_cls1, t_cls2, (s_reg1, t_reg2))
                     loss2 = model.dino_loss(s_cls2, t_cls1, (s_reg2, t_reg1))
                     loss = (loss1 + loss2) / 2
-
-                    # Update teacher center.
                     with torch.no_grad():
                         teacher_cat = torch.cat([t_cls1, t_cls2], dim=0)
                         model.dino_loss.center = model.dino_loss.center * 0.9 + \
                             teacher_cat.mean(dim=0, keepdim=True) * 0.1
-
-                scaler.scale(loss).backward()
-                scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.student.parameters(), 3.0)
-                scaler.step(optimizer)
-                scaler.update()
-            
-            else:
-                s_cls1, s_patch1, s_reg1 = model.student(x1)
-                s_cls2, s_patch2, s_reg2 = model.student(x2)
+                    loss.backward()
+                    optimizer.step()
                 
-                # Teacher forward pass (with no gradient).
-                with torch.no_grad():
-                    model.momentum_update()
-                    t_cls1, t_patch1, t_reg1 = model.teacher(x1)
-                    t_cls2, t_patch2, t_reg2 = model.teacher(x2)
-                
-                loss1 = model.dino_loss(s_cls1, t_cls2, (s_reg1, t_reg2))
-                loss2 = model.dino_loss(s_cls2, t_cls1, (s_reg2, t_reg1))
-                loss = (loss1 + loss2) / 2
+                epoch_loss += loss.item()
+                global_step += 1
+                wandb.log({
+                    "batch_loss": loss.item(),
+                    "epoch": epoch,
+                    "batch": i,
+                    "learning_rate": scheduler.get_last_lr()[0],
+                    "global_step": global_step
+                })
+                print(f"Epoch {epoch} | Batch {i}/{len(train_loader)} | Loss: {loss.item():.4f}")
 
-                # Update teacher center.
-                with torch.no_grad():
-                    teacher_cat = torch.cat([t_cls1, t_cls2], dim=0)
-                    model.dino_loss.center = model.dino_loss.center * 0.9 + \
-                        teacher_cat.mean(dim=0, keepdim=True) * 0.1
-                    
-                loss.backward()
-                optimizer.step()
-            
-            epoch_loss += loss.item()
-            # if i % 50 == 0:
-            print(f"Epoch {epoch} | Batch {i}/{len(train_loader)} | Loss: {loss.item():.4f}")
-        # scheduler.step()
-        print(f"Epoch {epoch} Average Loss: {epoch_loss/len(train_loader):.4f}")
+            scheduler.step()
+            avg_epoch_loss = epoch_loss / len(train_loader)
+            wandb.log({"epoch_avg_loss": avg_epoch_loss, "epoch": epoch})
+            print(f"Epoch {epoch} Average Loss: {avg_epoch_loss:.4f}")
 
+            # Run validation at the end of each epoch.
+            val_loss = validate_model(model, valid_loader, device)
+            wandb.log({"validation_loss": val_loss, "epoch": epoch})
+            print(f"Epoch {epoch} Validation Loss: {val_loss:.4f}")
 
-        
+            # Save checkpoint after each epoch.
+            save_checkpoint(model, optimizer, epoch, f"checkpoint_epoch_{epoch}.pt")
+
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt caught. Saving checkpoint before exiting.")
+        save_checkpoint(model, optimizer, epoch, f"checkpoint_interrupt_epoch_{epoch}.pt")
+        raise
 
     print("Single-GPU training completed.")
+    wandb.finish()
 
-
+# -----------------------------------------------------------------------------
+# DDP training with wandb logging, validation & checkpoint support (rank 0 logs)
+# -----------------------------------------------------------------------------
 def ddp_main_worker(rank, world_size, args):
-    # Initialize the process group.
     dist.init_process_group(backend='nccl', init_method='env://',
                             world_size=world_size, rank=rank)
     torch.cuda.set_device(rank)
     device = torch.device(f'cuda:{rank}')
     if rank == 0:
         print(f"Running DDP training on {world_size} GPUs.")
+        wandb.init(
+            project="retina-dino",
+            config={
+                "img_size": 512,
+                "patch_size": 32,
+                "embed_dim": 1024,
+                "warmup_epochs": 5,
+                "max_epochs": 50,
+                "weight_decay": 0.05,
+                "momentum": 0.9996,
+                "batch_size": 32,
+            },
+            name=f"ddp_run_{wandb.util.generate_id()}"
+        )
 
-    # Hyperparameters (same as before; adjust if needed)
+    # Hyperparameters
     img_size = 512
     patch_size = 32
     embed_dim = 1024
@@ -355,7 +425,7 @@ def ddp_main_worker(rank, world_size, args):
     max_epochs = 50
     weight_decay = 0.05
     momentum = 0.9996
-    batch_size = 32  # (batch size per GPU; if you want a global batch size, adjust accordingly)
+    batch_size = 32  # per GPU
     num_registers = 8
 
     # Initialize model.
@@ -363,23 +433,16 @@ def ddp_main_worker(rank, world_size, args):
         img_size=img_size,
         patch_size=patch_size,
         embed_dim=embed_dim,
-        warmup_epochs=warmup_epochs,
-        max_epochs=max_epochs,
-        weight_decay=weight_decay,
         momentum=momentum,
-        batch_size=batch_size,
         num_registers=num_registers
     ).to(device)
 
-    # Wrap the student network in DDP. (Teacher is not updated by gradient, so we leave it as is.)
     model.student = torch.nn.parallel.DistributedDataParallel(
         model.student, device_ids=[rank], output_device=rank
     )
 
-    # Build optimizer on the student’s parameters.
     decay_params = []
     no_decay_params = []
-    # Note: when using DDP, use model.student.module.named_parameters() to access the original module.
     for name, param in model.student.module.named_parameters():
         if 'bias' in name or 'norm' in name or 'register' in name:
             no_decay_params.append(param)
@@ -391,7 +454,6 @@ def ddp_main_worker(rank, world_size, args):
         {'params': no_decay_params, 'weight_decay': 0.0}
     ], lr=base_lr, betas=(0.9, 0.999))
     
-    # Set up the LR scheduler (same as single-GPU).
     if warmup_epochs > 0:
         warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
             optimizer, start_factor=0.01, end_factor=1.0, total_iters=warmup_epochs
@@ -407,7 +469,7 @@ def ddp_main_worker(rank, world_size, args):
             optimizer, T_max=max_epochs, eta_min=1e-6
         )
 
-    # Data loader: use a distributed sampler.
+    # Prepare dataloaders.
     augmentor = DinowregAug(img_size=vit_config['img_size'])
     dataset_names = ["eyepacs", "aptos", "ddr", "idrid"]
     uniform_data_ld = UniformTrainDataloader(
@@ -415,82 +477,116 @@ def ddp_main_worker(rank, world_size, args):
         transformation=augmentor,
         batch_size=batch_size,
         num_workers=2,
-        sampler=True  # Enable distributed sampler
+        sampler=True
     )
     train_loader = uniform_data_ld.get_loader()
-    # If your dataloader returns a DistributedSampler, then you can call set_epoch on it.
     sampler = train_loader.sampler if hasattr(train_loader, 'sampler') else None
 
+    # Also create a validation loader.
+    valid_ld = SSLValidLoader(
+        dataset_names=dataset_names,
+        transformation=augmentor,
+        batch_size=batch_size,
+        num_work=2
+    )
+    valid_loader = valid_ld.get_loader()
+
     scaler = torch.cuda.amp.GradScaler()
+    global_step = 0
 
-    for epoch in range(max_epochs):
-        if sampler is not None:
-            sampler.set_epoch(epoch)
-        model.train()
-        epoch_loss = 0.0
-        for i, batch in enumerate(train_loader):
-            x1, x2 = batch
-            x1 = x1.to(device)
-            x2 = x2.to(device)
-            optimizer.zero_grad()
-            with torch.cuda.amp.autocast():
-                # Student forward pass (via DDP-wrapped module).
-                s_cls1, s_patch1, s_reg1 = model.student(x1)
-                s_cls2, s_patch2, s_reg2 = model.student(x2)
-                # Teacher forward pass.
-                with torch.no_grad():
-                    model.momentum_update()
-                    t_cls1, t_patch1, t_reg1 = model.teacher(x1)
-                    t_cls2, t_patch2, t_reg2 = model.teacher(x2)
-                loss1 = model.dino_loss(s_cls1, t_cls2, (s_reg1, t_reg2))
-                loss2 = model.dino_loss(s_cls2, t_cls1, (s_reg2, t_reg1))
-                loss = (loss1 + loss2) / 2
+    try:
+        for epoch in range(max_epochs):
+            if sampler is not None:
+                sampler.set_epoch(epoch)
+            model.train()
+            epoch_loss = 0.0
+            for i, batch in enumerate(train_loader):
+                x1, x2 = batch
+                x1 = x1.to(device)
+                x2 = x2.to(device)
+                optimizer.zero_grad()
+                with torch.cuda.amp.autocast():
+                    s_cls1, s_patch1, s_reg1 = model.student(x1)
+                    s_cls2, s_patch2, s_reg2 = model.student(x2)
+                    with torch.no_grad():
+                        model.momentum_update()
+                        t_cls1, t_patch1, t_reg1 = model.teacher(x1)
+                        t_cls2, t_patch2, t_reg2 = model.teacher(x2)
+                    loss1 = model.dino_loss(s_cls1, t_cls2, (s_reg1, t_reg2))
+                    loss2 = model.dino_loss(s_cls2, t_cls1, (s_reg2, t_reg1))
+                    loss = (loss1 + loss2) / 2
+                    with torch.no_grad():
+                        teacher_cat = torch.cat([t_cls1, t_cls2], dim=0)
+                        center_update = teacher_cat.mean(dim=0, keepdim=True)
+                        model.dino_loss.center = model.dino_loss.center * 0.9 + center_update * 0.1
+                        dist.all_reduce(model.dino_loss.center, op=dist.ReduceOp.SUM)
+                        model.dino_loss.center /= dist.get_world_size()
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.student.parameters(), 3.0)
+                scaler.step(optimizer)
+                scaler.update()
+                
+                epoch_loss += loss.item()
+                global_step += 1
 
-                # Update teacher center and synchronize across GPUs.
-                with torch.no_grad():
-                    teacher_cat = torch.cat([t_cls1, t_cls2], dim=0)
-                    center_update = teacher_cat.mean(dim=0, keepdim=True)
-                    model.dino_loss.center = model.dino_loss.center * 0.9 + center_update * 0.1
-                    # Synchronize the center across processes.
-                    dist.all_reduce(model.dino_loss.center, op=dist.ReduceOp.SUM)
-                    model.dino_loss.center /= dist.get_world_size()
-
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.student.parameters(), 3.0)
-            scaler.step(optimizer)
-            scaler.update()
-            
-            epoch_loss += loss.item()
-            if i % 50 == 0 and rank == 0:
-                print(f"Rank {rank} | Epoch {epoch} | Batch {i}/{len(train_loader)} | Loss: {loss.item():.4f}")
-        scheduler.step()
+                if i % 50 == 0 and rank == 0:
+                    wandb.log({
+                        "batch_loss": loss.item(),
+                        "epoch": epoch,
+                        "batch": i,
+                        "learning_rate": scheduler.get_last_lr()[0],
+                        "global_step": global_step
+                    })
+                    print(f"Rank {rank} | Epoch {epoch} | Batch {i}/{len(train_loader)} | Loss: {loss.item():.4f}")
+            scheduler.step()
+            if rank == 0:
+                avg_epoch_loss = epoch_loss / len(train_loader)
+                wandb.log({"epoch_avg_loss": avg_epoch_loss, "epoch": epoch})
+                print(f"Rank {rank} | Epoch {epoch} Average Loss: {avg_epoch_loss:.4f}")
+                val_loss = validate_model(model, valid_loader, device)
+                wandb.log({"validation_loss": val_loss, "epoch": epoch})
+                print(f"Rank {rank} | Epoch {epoch} Validation Loss: {val_loss:.4f}")
+                save_checkpoint(model, optimizer, epoch, f"ddp_checkpoint_epoch_{epoch}.pt")
+    except KeyboardInterrupt:
         if rank == 0:
-            print(f"Rank {rank} | Epoch {epoch} Average Loss: {epoch_loss/len(train_loader):.4f}")
-    
+            print("KeyboardInterrupt caught on DDP. Saving checkpoint before exiting.")
+            save_checkpoint(model, optimizer, epoch, f"ddp_checkpoint_interrupt_epoch_{epoch}.pt")
+        raise
+
     if rank == 0:
         print("DDP training completed.")
+        wandb.finish()
     dist.destroy_process_group()
 
 def train_ddp(args):
-    # Set the world size to the number of GPUs you wish to use.
     world_size = 2  # For example, 2 GPUs
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
     mp.spawn(ddp_main_worker, args=(world_size, args), nprocs=world_size, join=True)
 
+# -----------------------------------------------------------------------------
+# Main entry point
+# -----------------------------------------------------------------------------
 if __name__ == "__main__":
+    # Create data augmentations and dataloaders.
     augmentor = DinowregAug(img_size=swin_config['img_size'])
-    dataset_names = ["eyepacs", "aptos", "ddr", "idrid" , "messdr"]
-
+    dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"]
 
     train_loader = SSLTrainLoader(
         dataset_names=dataset_names,
         transformation=augmentor,
-        batch_size=32,
+        batch_size=64,
         num_work=4,
-    )
+    ).get_loader()
 
-    data_ld = train_loader.get_loader()
+    valid_loader = SSLValidLoader(
+        dataset_names=dataset_names,
+        transformation=augmentor,
+        batch_size=64,
+        num_work=4,
+    ).get_loader()
 
-    train_single_gpu(train_dl=data_ld , b_size=64)
+    max_epoch = 300
+    train_single_gpu(train_dl=train_loader, valid_dl=valid_loader, b_size=64, max_epoch=max_epoch)
+    # To run DDP training instead, call train_ddp(args)
