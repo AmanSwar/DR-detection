@@ -5,12 +5,13 @@ from tqdm import tqdm
 import wandb
 import time
 import timm  # make sure to install timm: pip install timm
-from model.utils import RearrangeAndLayerNorm , vit_config
+from model.utils import RearrangeAndLayerNorm, vit_config
 import os
 
 from model.utils import swin_config
 
 wandb.init()
+
 class IJEPALoss(nn.Module):
     def __init__(self):
         super().__init__()
@@ -28,15 +29,13 @@ class DRIjepa(nn.Module):
     def __init__(
         self,
         model_name='swin_base_patch4_window7_224',  # you can choose 'swin_t', 'swin_s', etc.
-        img_size=224,  # set according to the backbone’s expected resolution
+        img_size=256,  # updated img_size from 224 to 256
         n_box=6,
         dropout=0.1
     ):
         super().__init__()
 
         # Create two Swin Transformer backbones (from timm) in feature-only mode.
-        # Setting num_classes=0 and features_only=True makes the model return a list of feature maps.
-        # We take the last feature map (the most semantically rich one) for our SSL task.
         self.context_encoder = timm.create_model(
             model_name,
             pretrained=False,
@@ -138,27 +137,7 @@ class DRIjepa(nn.Module):
         ):
             target_param.data.mul_(momentum).add_((1 - momentum) * context_param.data)
 
-    # def forward(self, images, boxes=None):
-    #     B = images.shape[0]
-    #     # Get feature maps from context encoder (shape: B x C x H x W)
-    #     context_feats = self.context_encoder(images)[-1]
-    #     H = context_feats.shape[2]  # assuming square feature map
-
-    #     if boxes is None:
-    #         boxes = self.get_random_boxes(B, H)
-
-    #     # Apply predictor head to context features
-    #     pred_feats = self.predictor(context_feats)  # (B, C, H, W)
-    #     pred_feats = self.extract_target(pred_feats, boxes)  # (B, n_box, C)
-
-    #     # Compute target features without gradient
-    #     with torch.no_grad():
-    #         target_feats = self.target_encoder(images)[-1]  # (B, C, H, W)
-    #         target_feats = self.extract_target(target_feats, boxes)  # (B, n_box, C)
-
-    #     return pred_feats, target_feats
-    
-    # deepseek 
+    # forward method for deepseek
     def forward(self, images, boxes=None):
         B = images.shape[0]
         context_feats = self.context_encoder(images)[-1]
@@ -180,9 +159,8 @@ class DRIjepa(nn.Module):
 
         return pred_feats, target_feats
 
-
 def create_DRijepa(
-    img_size=224,
+    img_size=256,  # updated to 256
     model_name='swin_base_patch4_window7_224',
     n_box=6,
     dropout=0.1
@@ -256,13 +234,12 @@ class Trainer:
 
         with torch.no_grad():
             # Get feature map from context encoder
-            # (Assuming the context encoder returns a list and the last element is the feature map)
             features = self.model.context_encoder(sample)[-1]  # shape: (B, C, H, W)
             # Average over channels to get a single-channel "attention" map
             attn_map = features.mean(dim=1, keepdim=True)  # shape: (B, 1, H, W)
             # Normalize to [0, 1]
             attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min() + 1e-8)
-            # Upsample to match the original image size (assumes self.model.img_size is defined)
+            # Upsample to match the original image size
             attn_map = F.interpolate(attn_map, size=(self.model.img_size, self.model.img_size), mode='bilinear', align_corners=False)
             # Take the first sample for visualization
             attn_img = attn_map[0].squeeze().cpu().numpy()
@@ -340,21 +317,18 @@ if __name__ == "__main__":
     dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"]
     uniform_data_ld = data_set.SSLTrainLoader(
         dataset_names=dataset_names,
-        transformation=data_aug.IJEPAAugmentation(img_size=224),  # adjust img_size if needed
+        transformation=data_aug.IJEPAAugmentation(img_size=256),  # updated img_size from 224 to 256
         batch_size=BATCH_SIZE,
         num_workers=4,
     )
     data_ld = uniform_data_ld.get_loader()
 
     model, loss_fn = create_DRijepa(
-        img_size=swin_config["img_size"],
+        img_size=256,  # updated img_size from swin_config["img_size"] to 256
         model_name='swin_base_patch4_window7_224',
         n_box=6,
         dropout=0.1
     )
-
-
-    
 
     trainer = Trainer(
         model=model,
