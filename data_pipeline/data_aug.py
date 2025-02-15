@@ -253,7 +253,7 @@ class IJEPAAugmentation:
         image = self.pil_transforms(image)
         image = TF.to_tensor(image)
         image = self.tensor_transforms(image)
-        return image.float()
+        return image.float().clone()
     
 
 #--------------------------------------------------------------------------------------------
