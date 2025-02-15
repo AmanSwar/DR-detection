@@ -180,6 +180,7 @@ class Trainer:
         model,
         loss_fn,
         train_loader,
+        val_loader=None,  # optional validation loader
         max_ep=300,
         save_dir="checkpoint",
         log_interval=100,
@@ -189,6 +190,7 @@ class Trainer:
         self.model = model
         self.loss_fn = loss_fn
         self.train_loader = train_loader
+        self.val_loader = val_loader
         self.optim = torch.optim.AdamW(
             model.parameters(),
             lr=1.5e-4,
@@ -217,8 +219,9 @@ class Trainer:
         if self.scheduler is not None:
             checkpoint['scheduler_state_dict'] = self.scheduler.state_dict()
 
-        # Save checkpoint (uncomment one of the following)
+        # Save checkpoint to file (uncomment and update the path as needed)
         # torch.save(checkpoint, os.path.join(self.save_dir, f"checkpoint_ep_{epoch}.pt"))
+        print(f"Checkpoint saved for epoch {epoch} with loss {loss:.4f}")
 
     def log_attention_map(self, epoch):
         """
@@ -280,48 +283,85 @@ class Trainer:
         avg_loss = total_loss / n_batch
         return avg_loss
 
+    def validate_epoch(self, epoch):
+        """Run one epoch over the validation set."""
+        self.model.eval()
+        total_loss = 0
+        n_batch = len(self.val_loader)
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(self.val_loader):
+                img = batch.to(self.device)
+                pred_feat, target_feat = self.model(img)
+                loss = self.loss_fn(pred_feat, target_feat)
+                total_loss += loss.item()
+        avg_val_loss = total_loss / n_batch
+        wandb.log({'val_loss': avg_val_loss, 'epoch': epoch})
+        print(f"Validation Epoch {epoch}: Loss = {avg_val_loss:.4f}")
+        return avg_val_loss
+
     def train(self):
         best_loss = float("inf")
+        best_val_loss = float("inf") if self.val_loader is not None else None
         self.model.to(self.device)
-        for ep in tqdm(range(self.max_ep)):
-            epoch_start_time = time.time()
-            loss = self.train_epoch(ep)
-            ep_dur = time.time() - epoch_start_time
+        try:
+            for ep in tqdm(range(self.max_ep)):
+                epoch_start_time = time.time()
+                loss = self.train_epoch(ep)
+                ep_dur = time.time() - epoch_start_time
 
-            if self.scheduler is not None:
-                self.scheduler.step()
+                if self.scheduler is not None:
+                    self.scheduler.step()
 
-            wandb.log({
-                'epoch_loss': loss,
-                'epoch': ep,
-                'learning_rate': self.optim.param_groups[0]['lr'],
-                'epoch_duration': ep_dur
-            })
+                wandb.log({
+                    'epoch_loss': loss,
+                    'epoch': ep,
+                    'learning_rate': self.optim.param_groups[0]['lr'],
+                    'epoch_duration': ep_dur
+                })
 
-            print(f"Epoch {ep}: Loss = {loss:.4f}, Time = {ep_dur:.2f}s")
+                print(f"Epoch {ep}: Loss = {loss:.4f}, Time = {ep_dur:.2f}s")
 
-            if ep % self.save_interval == 0 or loss < best_loss:
-                # self.save_checkpoint(ep, loss)
-                if loss < best_loss:
-                    best_loss = loss
+                # Run validation if a validation loader is provided
+                if self.val_loader is not None:
+                    val_loss = self.validate_epoch(ep)
+                    if val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        # Optionally, save checkpoint for best validation loss
+                        self.save_checkpoint(ep, loss)
 
-            # Log an attention map every 15 epochs
-            if ep % 15 == 0:
-                self.log_attention_map(ep)
+                if ep % self.save_interval == 0 or loss < best_loss:
+                    self.save_checkpoint(ep, loss)
+                    if loss < best_loss:
+                        best_loss = loss
+
+                # Log an attention map every 15 epochs
+                if ep % 15 == 0:
+                    self.log_attention_map(ep)
+        except KeyboardInterrupt:
+            print("KeyboardInterrupt detected. Saving checkpoint and exiting...")
+            self.save_checkpoint(ep, loss)
 
 if __name__ == "__main__":
     print("Hii I am here")
     BATCH_SIZE = 32
     # Replace your data pipeline accordingly.
-    from data_pipeline import data_set, data_aug
+    from data_pipeline.data_set import SSLTrainLoader , SSLValidLoader
+    from data_pipeline.data_aug import IJEPAAugmentation
     dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"]
-    uniform_data_ld = data_set.SSLTrainLoader(
+    augmentor = IJEPAAugmentation(img_size=swin_config["img_size"])
+    train_loader = SSLTrainLoader(
         dataset_names=dataset_names,
-        transformation=data_aug.IJEPAAugmentation(img_size=256),  # updated img_size from 224 to 256
-        batch_size=BATCH_SIZE,
-        num_workers=4,
-    )
-    data_ld = uniform_data_ld.get_loader()
+        transformation=augmentor,
+        batch_size=48,
+        num_work=4,
+    ).get_loader()
+
+    valid_loader = SSLValidLoader(
+        dataset_names=dataset_names,
+        transformation=augmentor,
+        batch_size=8,
+        num_work=4,
+    ).get_loader()
 
     model, loss_fn = create_DRijepa(
         img_size=256,  # updated img_size from swin_config["img_size"] to 256
@@ -333,7 +373,8 @@ if __name__ == "__main__":
     trainer = Trainer(
         model=model,
         loss_fn=loss_fn,
-        train_loader=data_ld,
+        train_loader=train_loader,
+        val_loader=valid_loader,  # pass the validation loader here
     )
 
     trainer.train()
