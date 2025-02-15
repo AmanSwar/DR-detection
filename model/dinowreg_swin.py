@@ -582,7 +582,7 @@ def train_ddp():
     world_size = 2  
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
-    mp.spawn(ddp_main_worker, args=(world_size), nprocs=world_size, join=True)
+    mp.spawn(ddp_main_worker, args=(world_size,), nprocs=world_size, join=True)
 
 # -----------------------------------------------------------------------------
 # Main entry point
