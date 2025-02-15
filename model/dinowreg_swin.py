@@ -493,7 +493,7 @@ def ddp_main_worker(rank, world_size):
     # Use SSLTrainLoader (which should support distributed sampling when sampler=True)
     train_loader = DistSSLTrainLoader(
         dataset_names=dataset_names,
-        transformation=augmentor,
+        img_size=swin_config["img_size"],
         batch_size=batch_size,
         num_work=4,
         world_size=world_size
@@ -503,7 +503,7 @@ def ddp_main_worker(rank, world_size):
 
     valid_loader = DistSSLValidLoader(
         dataset_names=dataset_names,
-        transformation=augmentor,
+        img_size=swin_config["img_size"],
         batch_size=8,
         num_work=4,
         world_size=world_size,
