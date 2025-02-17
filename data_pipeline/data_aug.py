@@ -607,7 +607,7 @@ class DinowregAug:
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomVerticalFlip(p=0.5),
             RandomRotate90(p=0.5),
-            CLAHE(clip_limit=3.0, tile_grid_size=(8, 8)),
+            # CLAHE(clip_limit=3.0, tile_grid_size=(8, 8)),
             transforms.RandomApply([
                 transforms.RandomChoice([
                     # ElasticTransform(alpha=50, sigma=7, alpha_affine=10),
