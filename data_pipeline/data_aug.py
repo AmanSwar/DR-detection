@@ -586,8 +586,8 @@ class DinowregAug:
             transforms.Resize((img_size, img_size)),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomVerticalFlip(p=0.5),
-            RandomRotate90(p=0.5),
-            CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
+            # RandomRotate90(p=0.5),
+            # CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
             transforms.RandomApply([
                 transforms.RandomChoice([
                     GaussianBlurTransform(blur_limit=(3, 7)),
