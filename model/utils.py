@@ -1,6 +1,6 @@
 import torch.nn as nn
 from einops import rearrange
-
+import torch
 class RearrangeAndLayerNorm(nn.Module):
     def __init__(self, normalized_shape):
         super().__init__()
@@ -13,6 +13,15 @@ class RearrangeAndLayerNorm(nn.Module):
         # return to original shape if needed
         x = rearrange(x, 'b h w c -> b c h w')
         return x
+    
+
+def get_mem_info():
+    device = torch.device('cuda:0')
+    free, total = torch.cuda.mem_get_info(device)
+    print("\n")
+    print(f"Total GPU memory: {total} bytes")
+    print(f"Free GPU memory: {free} bytes")
+    print("\n")
 
 
 vit_config = {
