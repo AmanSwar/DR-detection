@@ -365,7 +365,7 @@ class UnitedSSLTrainingDataset(Dataset):
             img = Image.open(img_path)
             if img.mode != 'RGB':
                 img = img.convert('RGB')
-            img = np.array(img)
+            # img = np.array(img)
             
             if self.transformation is not None:
                 trans_img = self.transformation(img)
