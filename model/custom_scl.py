@@ -352,7 +352,7 @@ if __name__ == "__main__":
     trainloader = UniformTrainDataloader(
         dataset_names=dataset_names,
         transformation=scl_trans,
-        batch_size=64,
+        batch_size=32,
         num_workers=0,
         sampler=True
     ).get_loader()
@@ -360,7 +360,7 @@ if __name__ == "__main__":
     validloader = UniformValidDataloader(
         dataset_names=dataset_names,
         transformation=scl_trans,
-        batch_size=64,
+        batch_size=32,
         num_workers=0,
         sampler=True
     ).get_loader()
