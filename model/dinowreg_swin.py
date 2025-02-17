@@ -12,15 +12,9 @@ import wandb  # <-- Import wandb
 
 from data_pipeline.data_aug import DinowregAug 
 from data_pipeline.data_set import SSLTrainLoader, SSLValidLoader , DistSSLTrainLoader , DistSSLValidLoader
-from model.utils import vit_config, vit_test_config, swin_test_config, swin_config
+from model.utils import vit_config, vit_test_config, swin_test_config, swin_config , get_mem_info
 
-def get_mem_info():
-    device = torch.device('cuda:0')
-    free, total = torch.cuda.mem_get_info(device)
-    print("\n")
-    print(f"Total GPU memory: {total} bytes")
-    print(f"Free GPU memory: {free} bytes")
-    print("\n")
+
 
 get_mem_info()
 
@@ -593,24 +587,39 @@ if __name__ == "__main__":
     augmentor = DinowregAug(img_size=swin_config['img_size'])
     dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"]
 
-    train_loader = DistSSLTrainLoader(
+    dist_train_loader = DistSSLTrainLoader(
         dataset_names=dataset_names,
         img_size=swin_config['img_size'],
-        batch_size=48,
+        batch_size=32,
         num_work=4,
     ).get_loader()
 
-    valid_loader = DistSSLValidLoader(
+    dist_valid_loader = DistSSLValidLoader(
         dataset_names=dataset_names,
         img_size=swin_config["img_size"],
         batch_size=8,
         num_work=4,
     ).get_loader()
 
+    train_loader = SSLTrainLoader(
+        dataset_names=dataset_names,
+        transformation=augmentor,
+        batch_size=32,
+        num_work=4,
+    ).get_loader()
+
+
+    valid_loader = SSLValidLoader(
+        dataset_names=dataset_names,
+        transformation=augmentor,
+        batch_size=32,
+        num_work=4,
+    ).get_loader()
+
     get_mem_info()
     max_epoch = 300
-    # train_single_gpu(train_dl=train_loader, valid_dl=valid_loader, b_size=48, max_epoch=max_epoch)
+    train_single_gpu(train_dl=train_loader, valid_dl=valid_loader, b_size=32, max_epoch=max_epoch)
     # To run DDP training instead, call train_ddp(args)
     
     
-    train_ddp()
+    # train_ddp()
