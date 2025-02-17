@@ -114,7 +114,7 @@ class UnitedTrainingDataset(Dataset):
             img = Image.open(img_path)
             if img.mode != 'RGB':
                 img = img.convert('RGB')
-            img = np.array(img)
+            # img = np.array(img)
             
             if self.transformation is not None:
                 trans_img = self.transformation(img)
@@ -185,6 +185,12 @@ class UnitedValidationDataset(Dataset):
         """
 
         return self.image_path , self.labels
+
+    def get_labels(self) -> List[int]:
+        """
+        Function to return labels
+        """
+        return self.labels
         
     def __len__(self):
         return len(self.image_path)
