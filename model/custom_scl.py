@@ -10,6 +10,8 @@ import wandb  # Make sure to install wandb via pip if you haven't already
 from tqdm import tqdm  # Import tqdm for progress bars
 import numpy as np
 
+
+IMG_SIZE = 384
 #########################################
 # 1. Supervised Contrastive Loss Module #
 #########################################
@@ -30,14 +32,11 @@ class SupervisedContrastiveLoss(nn.Module):
         device = features.device
         batch_size = features.shape[0]
 
-        # Normalize the feature vectors
         features = F.normalize(features, p=2, dim=1)
 
-        # Compute the cosine similarity matrix
         similarity_matrix = torch.matmul(features, features.T)  # shape: [B, B]
         logits = similarity_matrix / self.temperature
 
-        # Create a mask to remove self-comparisons
         logits_mask = torch.scatter(torch.ones_like(logits),
                                     1,
                                     torch.arange(batch_size).view(-1, 1).to(device),
@@ -46,7 +45,6 @@ class SupervisedContrastiveLoss(nn.Module):
         # Create mask where mask[i, j] = 1 if labels[i]==labels[j], else 0.
         labels = labels.contiguous().view(-1, 1)
         mask = torch.eq(labels, labels.T).float().to(device)
-        # Remove self-comparisons from the positive mask
         mask = mask * logits_mask
 
         # Compute the denominator: sum over all examples except self
@@ -69,25 +67,23 @@ class SupervisedContrastiveLoss(nn.Module):
 class SwinTransformerEncoder(nn.Module):
     def __init__(self, 
                  model_name="swin_tiny_patch4_window7_224", 
-                 pretrained=True,
-                 img_size=512,         # Updated image size
-                 patch_size=8          # Increased patch size to reduce token count
+                 pretrained=False,
+                 img_size=IMG_SIZE,         # Updated image size
+                 patch_size=4          # Increased patch size to reduce token count
                 ):
         super(SwinTransformerEncoder, self).__init__()
         self.model = timm.create_model(model_name, pretrained=pretrained)
         self.model.reset_classifier(0)
         
         # Update patch embedding parameters for higher resolution
-        self.model.patch_embed.img_size = img_size
+        self.model.patch_embed.img_size = (img_size , img_size)
         self.model.patch_embed.patch_size = patch_size
         
-        # For consistency, calculate the new grid resolution
         new_resolution = img_size // patch_size  # e.g., 512 / 8 = 64
         print(f"New feature map resolution: {new_resolution} x {new_resolution}")
         
         # Optionally, adjust the window size (make sure it divides new_resolution)
         # Here we set it to 8, but you can change it based on your design.
-        self.model.window_size = 8
         
         # (Optional) If using pretrained weights, you may need to interpolate 
         # positional embeddings to match the new grid. This example leaves that as a placeholder.
@@ -127,7 +123,7 @@ class RetinopathyModel(nn.Module):
                  num_classes=6, 
                  projection_dim=128, 
                  swin_model_name="swin_tiny_patch4_window7_224",
-                 img_size=512,         # Pass updated image size to encoder
+                 img_size=IMG_SIZE,         # Pass updated image size to encoder
                  patch_size=8          # Pass updated patch size to encoder
                 ):
         super(RetinopathyModel, self).__init__()
@@ -299,21 +295,21 @@ def train(n_epoch, train_loader, valid_loader):
     
     # Initialize model, optimizer, and loss functions (created only once)
     # Here, we use 512 as the input image size.
-    model = RetinopathyModel(num_classes=6, projection_dim=128, img_size=512, patch_size=8).to(device)
+    model = RetinopathyModel(num_classes=6, projection_dim=128, img_size=IMG_SIZE, patch_size=4).to(device)
     optimizer = Adam(model.parameters(), lr=1e-4)
     scl_criterion = SupervisedContrastiveLoss(temperature=0.07)
     ce_criterion = nn.CrossEntropyLoss()
     
     # Initialize wandb and log configuration details
-    wandb.init(project="retinopathy_scl_training", config={
-        "learning_rate": 1e-4,
-        "batch_size": train_loader.batch_size,
-        "epochs": n_epoch,
-        "con_weight": 0.7,
-        "img_size": 512,
-        "patch_size": 8
-    })
-    wandb.watch(model, log="all")
+    # wandb.init(project="retinopathy_scl_training", config={
+    #     "learning_rate": 1e-4,
+    #     "batch_size": train_loader.batch_size,
+    #     "epochs": n_epoch,
+    #     "con_weight": 0.7,
+    #     "img_size": IMG_SIZE,
+    #     "patch_size": 8
+    # })
+    # wandb.watch(model, log="all")
 
     try:
         for epoch in range(n_epoch):
@@ -356,16 +352,16 @@ if __name__ == "__main__":
     trainloader = UniformTrainDataloader(
         dataset_names=dataset_names,
         transformation=scl_trans,
-        batch_size=64,
-        num_workers=2,
+        batch_size=8,
+        num_workers=0,
         sampler=True
     ).get_loader()
 
     validloader = UniformValidDataloader(
         dataset_names=dataset_names,
         transformation=scl_trans,
-        batch_size=64,
-        num_workers=2,
+        batch_size=8,
+        num_workers=0,
         sampler=True
     ).get_loader()
     
