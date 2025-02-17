@@ -580,7 +580,7 @@ class DinowregAug:
         # View 1 pipeline (mimicking the Albumentations view1)
         self.base_transform = transforms.Compose([
             transforms.Resize((img_size, img_size)),
-            CLAHE(clip_limit=3.0, tile_grid_size=(8, 8)),
+            # CLAHE(clip_limit=3.0, tile_grid_size=(8, 8)),
         ])
         self.view1_transform = transforms.Compose([
             transforms.Resize((img_size, img_size)),
