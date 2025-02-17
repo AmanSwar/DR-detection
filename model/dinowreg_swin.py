@@ -580,7 +580,7 @@ def ddp_main_worker(rank, world_size):
 
 def train_ddp():
     # Adjust world_size as needed (here we use 2 GPUs as an example)
-    world_size = 2  
+    world_size = 1 
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
     mp.spawn(ddp_main_worker, args=(world_size , ), nprocs=world_size, join=True)
@@ -593,22 +593,24 @@ if __name__ == "__main__":
     augmentor = DinowregAug(img_size=swin_config['img_size'])
     dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"]
 
-    train_loader = SSLTrainLoader(
+    train_loader = DistSSLTrainLoader(
         dataset_names=dataset_names,
-        transformation=augmentor,
+        img_size=swin_config['img_size'],
         batch_size=48,
         num_work=4,
     ).get_loader()
 
-    valid_loader = SSLValidLoader(
+    valid_loader = DistSSLValidLoader(
         dataset_names=dataset_names,
-        transformation=augmentor,
+        img_size=swin_config["img_size"],
         batch_size=8,
         num_work=4,
     ).get_loader()
 
     get_mem_info()
     max_epoch = 300
-    train_single_gpu(train_dl=train_loader, valid_dl=valid_loader, b_size=48, max_epoch=max_epoch)
+    # train_single_gpu(train_dl=train_loader, valid_dl=valid_loader, b_size=48, max_epoch=max_epoch)
     # To run DDP training instead, call train_ddp(args)
-    # train_ddp()
+    
+    
+    train_ddp()
