@@ -382,20 +382,8 @@ def train_multi_gpu(model, train_loader, val_loader, num_epochs, device, device_
 # Main Training Script
 #######################################
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--multi_gpu',
-        action='store_true',
-        help='Flag to use multi GPU training (requires at least 2 GPUs)'
-    )
-    parser.add_argument(
-        '--wandb',
-        action='store_true',
-        help='Flag to enable wandb logging'
-    )
-    args = parser.parse_args()
     
-    # Initialize wandb if flag is provided
+    
         
     
     # Define your dataset names and create dataloaders using your existing pipeline.
@@ -416,7 +404,7 @@ if __name__ == "__main__":
     
     # Swin configuration for your model (adjust as needed)
     swin_config = {
-        'img_size': 1024,
+        'img_size':224,
         'patch_size': 4,
         'in_chan': 3,
         'embed_dim': 128,
@@ -436,13 +424,6 @@ if __name__ == "__main__":
     num_epochs = 300
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    if args.multi_gpu:
-        print("Starting multi GPU training...")
-        train_multi_gpu(ibot_model, train_loader, val_loader, num_epochs, device, device_ids=[0, 1], wandb_enabled=args.wandb)
-    else:
-        print("Starting single GPU training...")
-        train_single_gpu(ibot_model, train_loader, num_epochs, val_loader, wandb_enabled=args.wandb)
+    train_single_gpu(ibot_model , train_loader=train_loader , num_epochs=num_epochs)
     
-    # Finish wandb run if enabled
-    if args.wandb and wandb is not None:
-        wandb.finish()
+    wandb.finish()
