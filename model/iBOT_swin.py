@@ -108,9 +108,7 @@ class MaskedSwin(nn.Module):
     def forward(self, x, mask_ratio=0.4):
         B = x.shape[0]
         
-        # Get patch features from SwinTransformer.
-        # Here we assume that self.swin.features(x) returns a tensor of shape:
-        # [B, self.final_dim, H, W].
+        
         features = self.swin.features(x)
         
         # Reshape features to have shape [B, num_patches, self.final_dim]
