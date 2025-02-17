@@ -221,7 +221,7 @@ class CustomiBOT(nn.Module):
 #######################################
 # Training Functions with Fancy Logging
 #######################################
-def train_single_gpu(model, train_loader, num_epochs, val_loader=None, wandb_enabled=False):
+def train_single_gpu(model, train_loader, num_epochs, val_loader=None, wandb_enabled=True):
     device = torch.device("cuda")
     model.to(device)
     
