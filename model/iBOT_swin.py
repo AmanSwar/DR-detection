@@ -385,22 +385,22 @@ if __name__ == "__main__":
     
     
         
-    
+    transform = data_aug.IbotRetAug(img_size=224)
     # Define your dataset names and create dataloaders using your existing pipeline.
     dataset_names = ["eyepacs", "aptos", "ddr", "idrid"]
     train_loader = data_set.SSLTrainLoader(
         dataset_names=dataset_names,
-        transformation=data_aug.IJEPAAugmentation(),
+        transformation=transform,
         batch_size=32,
         num_workers=4,
     ).get_loader()
     
-    val_loader = data_set.SSLValidLoader(
-        dataset_names=dataset_names,
-        transformation=None,
-        batch_size=32,
-        num_workers=4,
-    ).get_loader()
+    # val_loader = data_set.SSLValidLoader(
+    #     dataset_names=dataset_names,
+    #     transformation=transform,
+    #     batch_size=32,
+    #     num_workers=4,
+    # ).get_loader()
     
     # Swin configuration for your model (adjust as needed)
     swin_config = {
