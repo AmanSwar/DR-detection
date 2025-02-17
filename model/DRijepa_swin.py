@@ -324,19 +324,21 @@ class Trainer:
                 # Run validation if a validation loader is provided
                 if self.val_loader is not None:
                     val_loss = self.validate_epoch(ep)
-                    if val_loss < best_val_loss:
-                        best_val_loss = val_loss
-                        # Optionally, save checkpoint for best validation loss
-                        self.save_checkpoint(ep, loss)
+                #     if val_loss < best_val_loss:
+                #         best_val_loss = val_loss
+                #         # Optionally, save checkpoint for best validation loss
+                #         self.save_checkpoint(ep, loss)
 
-                if ep % self.save_interval == 0 or loss < best_loss:
-                    self.save_checkpoint(ep, loss)
-                    if loss < best_loss:
-                        best_loss = loss
+                # if ep % self.save_interval == 0 or loss < best_loss:
+                #     self.save_checkpoint(ep, loss)
+                #     if loss < best_loss:
+                #         best_loss = loss
 
                 # Log an attention map every 15 epochs
                 if ep % 15 == 0:
                     self.log_attention_map(ep)
+
+            self.save_checkpoint(self.max_ep , best_loss)
         except KeyboardInterrupt:
             print("KeyboardInterrupt detected. Saving checkpoint and exiting...")
             self.save_checkpoint(ep, loss)
