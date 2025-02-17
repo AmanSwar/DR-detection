@@ -215,29 +215,18 @@ class CoarseDropout_ijepa:
 class IJEPAAugmentation:
     def __init__(self , img_size):
         self.pil_transforms = transforms.Compose([
-            transforms.Resize((img_size, img_size)),
+            transforms.Resize(size=(img_size , img_size)),
             CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
-            transforms.RandomApply(
-                [transforms.ColorJitter(brightness=0.1, contrast=0.1)],
-                p=0.5
-            ),
             # transforms.RandomApply(
-            #     [transforms.ColorJitter(hue=5/360, saturation=0.1, brightness=0.05)],
-            #     p=0.3
-            # )
+            #     [transforms.ColorJitter(brightness=0.1, contrast=0.1)],
+            #     p=0.5
+            # ),
         ])
-        self.tensor_transforms = transforms.Compose([
-            # transforms.RandomApply([
-            #     transforms.RandomChoice([
-            #         GaussianNoiseTransform((10.0, 50.0)),
-            #         MultiplicativeNoiseTransform((0.95, 1.05))
-            #     ])
-            # ], p=0.3),
-            
+        self.tensor_transforms = transforms.Compose([   
             transforms.RandomApply([
                 transforms.RandomChoice([
                     transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
-                    MedianBlurTransform_ijepa(3)
+                    # MedianBlurTransform_ijepa(3)
                 ])
             ], p=0.2),
             transforms.RandomApply([
@@ -250,10 +239,11 @@ class IJEPAAugmentation:
         ])
 
     def __call__(self, image):
-        image = self.pil_transforms(image)
-        image = TF.to_tensor(image)
-        image = self.tensor_transforms(image)
-        return image.float().clone()
+        trans_image = self.pil_transforms(image)
+
+        trans_image_1 = TF.to_tensor(trans_image)
+        trans_image_2 = self.tensor_transforms(trans_image_1)
+        return trans_image_2.float()
     
 
 #--------------------------------------------------------------------------------------------
@@ -649,3 +639,62 @@ scl_trans = transforms.Compose(
     ]
 )
 
+#-----------------------------------------------------------------------------------------
+def default_simclr_transform():
+    return transforms.Compose([
+        transforms.ToPILImage(),  # convert tensor image (C x H x W) to PIL Image
+        transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
+        CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomApply([transforms.ColorJitter(0.8, 0.8, 0.8, 0.2)], p=0.8),
+        transforms.RandomGrayscale(p=0.2),
+        transforms.ToTensor()
+    ])
+
+
+class SimCLRAug:
+
+    def __init__(self , img_size):
+
+        self.base_trans = transforms.Compose([
+            transforms.ToPILImage(),  # convert tensor image (C x H x W) to PIL Image
+            transforms.RandomResizedCrop(img_size, scale=(0.8, 1.0)),
+            CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomApply([transforms.ColorJitter(0.8, 0.8, 0.8, 0.2)], p=0.8),
+            transforms.RandomGrayscale(p=0.2),
+            transforms.ToTensor()
+        ])
+
+
+    def __call__(self , img):
+
+        view1 = self.base_trans(img)
+        view2 = self.base_trans(img)
+
+        return view1 , view2
+    
+
+# -------------------------------------------------------------------------------------
+
+class MoCoAug:
+
+    def __init__(self , img_size):
+
+        self.base_trans = transforms.Compose(
+            [
+                transforms.ToPILImage(),
+                transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
+                CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomApply([transforms.ColorJitter(0.8, 0.8, 0.8, 0.2)], p=0.8),
+                transforms.RandomGrayscale(p=0.2),
+                transforms.ToTensor()
+            ]
+        )
+
+    def __call__(self , image):
+        im_q = self.base_trans(image)
+        im_k = self.base_trans(image)
+
+        return im_q , im_k
