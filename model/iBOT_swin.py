@@ -392,7 +392,7 @@ if __name__ == "__main__":
         dataset_names=dataset_names,
         transformation=transform,
         batch_size=32,
-        num_workers=4,
+        num_work=4,
     ).get_loader()
     
     # val_loader = data_set.SSLValidLoader(
