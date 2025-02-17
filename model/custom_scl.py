@@ -9,7 +9,10 @@ import math
 import wandb  # Make sure to install wandb via pip if you haven't already
 from tqdm import tqdm  # Import tqdm for progress bars
 import numpy as np
+from model.utils import get_mem_info
 
+
+get_mem_info()
 
 IMG_SIZE = 384
 #########################################
