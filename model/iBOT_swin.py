@@ -303,8 +303,7 @@ def train_single_gpu(model, train_loader, num_epochs, val_loader=None, wandb_ena
         print(log_msg)
 
         # Log metrics to wandb if enabled
-        if wandb_enabled and wandb is not None:
-            wandb.log(log_dict, step=global_step)
+        wandb.log(log_dict, step=global_step)
 
 def train_multi_gpu(model, train_loader, val_loader, num_epochs, device, device_ids=[0, 1], wandb_enabled=False):
     # Wrap the model with DataParallel and move to the primary GPU.
