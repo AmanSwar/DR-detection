@@ -293,7 +293,7 @@ def train_single_gpu(model, train_loader, num_epochs, val_loader=None, wandb_ena
         }
         if epoch_val_loss is not None:
             log_dict["val_loss"] = epoch_val_loss
-
+        wandb.log(log_dict, step=global_step)
         # Fancy logging to console
         log_msg = f"Epoch [{epoch+1}/{num_epochs}] | LR: {log_dict['lr']:.6f} | "
         log_msg += f"Train Loss: {log_dict['train_loss']:.4f}"
@@ -302,8 +302,7 @@ def train_single_gpu(model, train_loader, num_epochs, val_loader=None, wandb_ena
         log_msg += f" | Time: {epoch_duration:.2f}s"
         print(log_msg)
 
-        # Log metrics to wandb if enabled
-        wandb.log(log_dict, step=global_step)
+        
 
 def train_multi_gpu(model, train_loader, val_loader, num_epochs, device, device_ids=[0, 1], wandb_enabled=False):
     # Wrap the model with DataParallel and move to the primary GPU.
