@@ -459,8 +459,21 @@ class UnitedSSLValidationDataset(Dataset):
             return img 
         except (IOError, FileNotFoundError) as e:
             raise RuntimeError(f"Failed to load image {img_path}: {str(e)}")
+        except OSError as e:
+            print(f"Warning: Failed to load image {img_path}. Skipping. Error: {e}")
+            return None
         except Exception as e:
             raise RuntimeError(f"Unexpected error loading {img_path}: {str(e)}")
+        
+
+
+from torch.utils.data.dataloader import default_collate
+def custom_collate_fn(batch):
+    filtered_batch = [item for item in batch if item is not None]
+    if len(filtered_batch) == 0:
+        return []
+        
+    return default_collate(filtered_batch)
 
 
 class SSLTrainLoader:
@@ -479,7 +492,13 @@ class SSLTrainLoader:
         self.num_workers = num_work
         training_dataset = UnitedSSLTrainingDataset(*self.dataset_names , transformation=self.transformation)
         
-        self.train_loader = DataLoader(dataset=training_dataset ,batch_size=self.batch_size , pin_memory=True , num_workers=self.num_workers)
+        self.train_loader = DataLoader(
+            dataset=training_dataset ,
+            batch_size=self.batch_size , 
+            pin_memory=True , 
+            num_workers=self.num_workers,
+            custom_collate_fn=custom_collate_fn
+            )
     
     def get_loader(self):
         return self.train_loader
@@ -540,7 +559,8 @@ class SSLValidLoader:
             dataset=validation_dataset,
             batch_size=self.batch_size,
             pin_memory=True,
-            num_workers=self.num_workers
+            num_workers=self.num_workers,
+            custom_collate_fn=custom_collate_fn
         )
 
     def get_loader(self):
