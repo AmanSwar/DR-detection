@@ -6,7 +6,7 @@ from torch.utils.data import Dataset , DataLoader , WeightedRandomSampler
 from data_pipeline.data_load import EyepacsGradingDataset , AptosGradingDataset , IdridGradingDataset , DdrGradingDataset , MessdrGradingDataset
 from data_pipeline.data_load import EyepacsSSLDataset , AptosSSLDataset , IdridSSLDataset , DdrSSLDataset , MessdrSSLDataset
 import random
-from PIL import Image
+from PIL import Image , ImageFile
 from typing import Tuple , List
 
 import numpy as np
@@ -16,6 +16,7 @@ from albumentations.pytorch import ToTensorV2
 
 from data_pipeline.data_aug import DinowregAug
 
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 class UnitedTrainingDataset(Dataset):
 
     def __init__(self , *args , transformation=None , img_size=1024):
