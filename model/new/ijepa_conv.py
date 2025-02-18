@@ -328,7 +328,7 @@ if __name__ == "__main__":
     train_loader = SSLTrainLoader(
         dataset_names=dataset_names,
         transformation=transforms_,
-        batch_size=64,
+        batch_size=128,
         num_work=4,
     ).get_loader()
 
