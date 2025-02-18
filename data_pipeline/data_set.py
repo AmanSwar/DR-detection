@@ -497,7 +497,7 @@ class SSLTrainLoader:
             batch_size=self.batch_size , 
             pin_memory=True , 
             num_workers=self.num_workers,
-            custom_collate_fn=custom_collate_fn
+            collate_fn=custom_collate_fn
             )
     
     def get_loader(self):
@@ -560,7 +560,7 @@ class SSLValidLoader:
             batch_size=self.batch_size,
             pin_memory=True,
             num_workers=self.num_workers,
-            custom_collate_fn=custom_collate_fn
+            collate_fn=custom_collate_fn,
         )
 
     def get_loader(self):
