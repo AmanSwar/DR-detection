@@ -211,7 +211,7 @@ def main():
     train_loader = data_set.SSLTrainLoader(
         dataset_names=dataset_names,
         transformation=transforms_,
-        batch_size=24,
+        batch_size=config["batch_size"],
         num_work=4,
     ).get_loader()
 
