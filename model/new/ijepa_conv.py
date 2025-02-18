@@ -315,7 +315,7 @@ class Trainer:
 
         except KeyboardInterrupt:
             print("KeyboardInterrupt detected. Saving checkpoint and exiting...")
-            self.save_checkpoint(ep, loss)
+            self.save_checkpoint(ep, best_loss)
 
 if __name__ == "__main__":
     # Your data loading code remains the same
