@@ -5,21 +5,17 @@ from torchvision.models.swin_transformer import SwinTransformer
 from einops import rearrange
 
 from torch.cuda.amp import autocast, GradScaler
-import torch
-import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR
 from torch.optim import AdamW
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.strategies import DDPStrategy
-from torch.cuda.amp import autocast
-
 
 
 class SwinIJepa(nn.Module):
     """Swin Transformer-based IJEPA implementation for medical images"""
     def __init__(
         self,
-        img_size=2048,
+        img_size=254,
         patch_size=4,
         in_chans=3,
         embed_dim=192,
@@ -28,34 +24,30 @@ class SwinIJepa(nn.Module):
         window_size=7,
         mlp_ratio=4.0,
         drop_rate=0.0,
-        **kwargs
+        
     ):
         super().__init__()
         
         # Swin Transformer as context encoder
         self.context_encoder = SwinTransformer(
-            img_size=img_size,
-            patch_size=patch_size,
-            in_chans=in_chans,
+            patch_size=(patch_size,patch_size),
             embed_dim=embed_dim,
             depths=depths,
             num_heads=num_heads,
-            window_size=window_size,
+            window_size=(window_size,window_size),
             mlp_ratio=mlp_ratio,
-            drop_rate=drop_rate,
+            dropout=drop_rate,
         )
         
         # Clone as target encoder (no gradient)
         self.target_encoder = SwinTransformer(
-            img_size=img_size,
-            patch_size=patch_size,
-            in_chans=in_chans,
+            patch_size=(patch_size,patch_size),
             embed_dim=embed_dim,
             depths=depths,
             num_heads=num_heads,
-            window_size=window_size,
+            window_size=(window_size,window_size),
             mlp_ratio=mlp_ratio,
-            drop_rate=drop_rate,
+            dropout=drop_rate,
         )
         for p in self.target_encoder.parameters():
             p.requires_grad = False
@@ -74,17 +66,16 @@ class SwinIJepa(nn.Module):
         
     def get_random_boxes(self, batch_size):
         """Generate random mask boxes for Swin's windowed architecture"""
-        # Implementation depends on your specific masking strategy
-        # This is a simplified version for demonstration
-        return torch.rand(batch_size, self.num_masks, 4)  # (x1,y1,x2,y2)
+       
+        return torch.rand(batch_size, self.num_masks, 4)  
         
     def forward(self, x, boxes=None):
-        # Extract features from both encoders
+       
         context_features = self.context_encoder(x)
         with torch.no_grad():
             target_features = self.target_encoder(x)
             
-        # Get final layer features and reshape for prediction
+       
         B, _, _, C = context_features.shape
         context_features = context_features.permute(0, 3, 1, 2)  # [B, C, H, W]
         
@@ -94,13 +85,15 @@ class SwinIJepa(nn.Module):
         
         return pred_features, target_features
 
+
 class DRLesionAttention(nn.Module):
     """Modified attention for Swin features"""
-    def __init__(self, dim, window_size=7):
+    def __init__(self, dim, window_size=7, num_heads=6):
         super().__init__()
         self.window_size = window_size
         self.scale = dim ** -0.5
         self.lesion_queries = nn.Parameter(torch.randn(1, 5, dim))
+        self.num_heads = num_heads
         
         # Swin-style relative position bias
         self.rel_pos_bias = nn.Parameter(torch.randn((2 * window_size - 1) ** 2, num_heads))
@@ -121,22 +114,30 @@ class DRLesionAttention(nn.Module):
         
         # Add learnable lesion queries
         lesion_queries = self.lesion_queries.repeat(num_windows, 1, 1)
-        window_queries = torch.cat([windows.mean([1,2]), lesion_queries], dim=1)
+        window_queries = torch.cat([windows.mean(dim=[1,2]).unsqueeze(1), lesion_queries], dim=1)
         
-        # Window-based attention
-        k = v = windows.flatten(1,2)
-        q = window_queries
+        # Prepare keys and values from window patches
+        k = v = windows.flatten(1,2)  # [num_windows, window_size*window_size, C]
+        q = window_queries  # [num_windows, 1+5, C]
         
-        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+        # Compute scaled dot-product attention
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale  # [num_windows, 6, window_size*window_size]
         
-        # Add relative position bias
-        relative_position_bias = self.rel_pos_bias
-        dots += relative_position_bias
+        # Add relative position bias (reshaping might be needed in a full implementation)
+        dots += self.rel_pos_bias.unsqueeze(0)
         
         attn = dots.softmax(dim=-1)
-        out = torch.matmul(attn, v)
+        out = torch.matmul(attn, v)  # [num_windows, 6, C]
         
-        return out.reshape(B, H, W, C)
+        # For simplicity, we take the output corresponding to the first query (global representation)
+        out = out[:, 0, :]  # [num_windows, C]
+        out = out.view(B, H // self.window_size, W // self.window_size, C)
+        # Upsample back to original spatial dims (this is a placeholder for a proper implementation)
+        out = F.interpolate(out.permute(0, 3, 1, 2), size=(H, W), mode='bilinear', align_corners=False)
+        out = out.permute(0, 2, 3, 1)
+        
+        return out
+
 
 class DRSpecificIJEPA(SwinIJepa):
     def __init__(self, *args, **kwargs):
@@ -145,16 +146,17 @@ class DRSpecificIJEPA(SwinIJepa):
         # Lesion attention module
         self.lesion_attention = DRLesionAttention(
             dim=kwargs.get('embed_dim', 192),
-            window_size=kwargs.get('window_size', 7)
+            window_size=kwargs.get('window_size', 7),
+            num_heads=kwargs.get('num_heads_attn', 6)  # you can add this key to your config if desired
         )
         
         # Lesion prediction heads
         self.lesion_heads = nn.ModuleDict({
-            'microaneurysms': nn.Linear(kwargs['embed_dim'], 1),
-            'hemorrhages': nn.Linear(kwargs['embed_dim'], 1),
-            'hard_exudates': nn.Linear(kwargs['embed_dim'], 1),
-            'cotton_wool_spots': nn.Linear(kwargs['embed_dim'], 1),
-            'neovascularization': nn.Linear(kwargs['embed_dim'], 1)
+            'microaneurysms': nn.Linear(kwargs.get('embed_dim', 192), 1),
+            'hemorrhages': nn.Linear(kwargs.get('embed_dim', 192), 1),
+            'hard_exudates': nn.Linear(kwargs.get('embed_dim', 192), 1),
+            'cotton_wool_spots': nn.Linear(kwargs.get('embed_dim', 192), 1),
+            'neovascularization': nn.Linear(kwargs.get('embed_dim', 192), 1)
         })
 
     def forward(self, images, boxes=None):
@@ -173,7 +175,7 @@ class DRSpecificIJEPA(SwinIJepa):
         }
         
         return features, target_features, lesion_predictions
-    
+
 
 class DRTrainer:
     def __init__(
@@ -208,9 +210,12 @@ class DRTrainer:
                 lesion_loss = 0
                 if lesion_labels is not None:
                     for name, pred in lesion_preds.items():
+                        # Assuming lesion_labels[name] is a tensor with labels corresponding to the batch
+                        start = i * len(micro_batch)
+                        end = (i + 1) * len(micro_batch)
                         lesion_loss += F.binary_cross_entropy_with_logits(
                             pred,
-                            lesion_labels[name][i * len(micro_batch):(i + 1) * len(micro_batch)]
+                            lesion_labels[name][start:end]
                         )
                 
                 loss = main_loss + 0.5 * lesion_loss
@@ -230,7 +235,6 @@ class DRTrainer:
             self.optimizer.step()
         self.optimizer.zero_grad()
         return total_loss / self.grad_accumulation_steps
-
 
 
 def train_dr_model(
@@ -268,8 +272,11 @@ def train_dr_model(
         
         # Training
         model.train()
-        for batch, lesion_labels in train_loader:
+        for batch in train_loader:
             batch = batch.to(device)
+            lesion_labels = None
+            # Assuming lesion_labels is a dictionary of tensors; move them to device as well
+            lesion_labels = {k: v.to(device) for k, v in lesion_labels.items()} if lesion_labels is not None else None
             loss = trainer.train_step(batch, lesion_labels)
             train_loss += loss
             
@@ -289,3 +296,47 @@ def train_dr_model(
         print(f"Val Loss: {val_loss/len(val_loader):.4f}")
 
 
+if __name__ == "__main__":
+   
+    from data_pipeline.data_set import SSLTrainLoader, SSLValidLoader
+    from data_pipeline.data_aug import IJEPAAugmentation
+    from model.utils import swin_config  
+    
+    
+    augmentor = IJEPAAugmentation(img_size=swin_config["img_size"])
+    
+    dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"]
+    
+    # Create training and validation loaders
+    train_loader = SSLTrainLoader(
+        dataset_names=dataset_names,
+        transformation=augmentor,
+        batch_size=32,
+        num_work=0,
+    ).get_loader()
+
+    valid_loader = SSLValidLoader(
+        dataset_names=dataset_names,
+        transformation=augmentor,
+        batch_size=32,
+        num_work=0,
+    ).get_loader()
+    
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    model = DRSpecificIJEPA().to(device)
+    
+    
+    num_epochs = 300
+    
+    # Start training
+    train_dr_model(
+        model=model,
+        train_loader=train_loader,
+        val_loader=valid_loader,
+        num_epochs=num_epochs,
+        device=device,
+        learning_rate=1e-4,
+        weight_decay=1e-4
+    )
