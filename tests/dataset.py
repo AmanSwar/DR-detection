@@ -68,12 +68,13 @@ train_ds = UnitedSSLTrainingDataset("eyepacs" , "aptos" , "ddr" , "idrid" , "mes
 print(len(train_ds))
 
 
-# ssl_train_ld = SSLTrainLoader(dataset_names=dataset_names , transformation=IJEPAAugmentation() , batch_size=8 , num_work=2)
+ssl_train_ld = SSLTrainLoader(dataset_names=dataset_names , transformation=IJEPAAugmentation(img_size=256) , batch_size=8 , num_work=2)
 
-# data_ld = ssl_train_ld.get_loader()
-# for img in data_ld:
-#     print(img)
-#     print("\n")
+data_ld = ssl_train_ld.get_loader()
+for img in data_ld:
+    print(img.shape)
+    print("\n")
+    break
 
 
 
