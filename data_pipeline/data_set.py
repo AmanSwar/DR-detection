@@ -446,18 +446,19 @@ class UnitedSSLValidationDataset(Dataset):
     def __getitem__(self, index):
         
         img_path = self.image_path[index]
+        
 
         try:
             img = Image.open(img_path)
             if img.mode != 'RGB':
                 img = img.convert('RGB')
-            img = np.array(img)
+            # img = np.array(img)
             
             if self.transformation is not None:
                 trans_img = self.transformation(img)
                 return trans_img
 
-            return img 
+            return img
         except (IOError, FileNotFoundError) as e:
             raise RuntimeError(f"Failed to load image {img_path}: {str(e)}")
         except OSError as e:
@@ -579,7 +580,6 @@ class DistSSLValidLoader:
             transformation=self.transformation
         )
 
-        # Create a distributed sampler for validation. Note that shuffle is set to False.
         self.sampler = DistributedSampler(validation_dataset, num_replicas=world_size, rank=rank, shuffle=False)
 
         self.valid_loader = DataLoader(
@@ -594,9 +594,24 @@ class DistSSLValidLoader:
         return self.valid_loader
 
     def set_epoch(self, epoch):
-        """
-        Although shuffling isn't necessary for validation, if you want to ensure
-        a deterministic ordering per epoch (or if you decide to enable shuffle later),
-        you can call this method each epoch.
-        """
+        
         self.sampler.set_epoch(epoch)
+
+# --------------------------------------------------------------------------------------------------------------
+
+
+class UniformTestDataset(Dataset):
+
+    def __init__(self):
+        pass
+
+
+class UniformTestLoader:
+
+    def __init__(self):
+        
+        pass
+
+    def get_loader(self):
+
+        pass
