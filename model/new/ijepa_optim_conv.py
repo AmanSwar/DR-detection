@@ -256,7 +256,7 @@ class Trainer:
         return avg_val_loss
 
     def train(self):
-        best_val_loss = float("inf")
+        best_val_loss = -float("inf")
         self.model.to(self.device)
         try:
             for ep in range(self.max_ep):
@@ -420,7 +420,7 @@ if __name__ == "__main__":
         loss_fn=loss_fn,
         train_loader=train_loader,
         val_loader=valid_loader,
-        max_ep=300,
+        max_ep=100,
         save_dir="best_checkpoint",
         log_interval=100,
         save_interval=10,

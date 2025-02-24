@@ -328,14 +328,14 @@ if __name__ == "__main__":
     train_loader = SSLTrainLoader(
         dataset_names=dataset_names,
         transformation=transforms_,
-        batch_size=80,
+        batch_size=16,
         num_work=4,
     ).get_loader()
 
     valid_loader = SSLValidLoader(
         dataset_names=dataset_names,
         transformation=transforms_,
-        batch_size=8,
+        batch_size=16,
         num_work=4,
     ).get_loader()
 
@@ -349,7 +349,7 @@ if __name__ == "__main__":
     trainer = Trainer(
         model=model,
         loss_fn=loss_fn,
-        train_loader=train_loader,
+        train_loader=valid_loader,
         val_loader=valid_loader,
     )
 
