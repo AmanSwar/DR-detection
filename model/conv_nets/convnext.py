@@ -134,8 +134,8 @@ class Trainer:
         signal.signal(signal.SIGTERM, self.graceful_exit)
         
     def setup_dataloaders(self):
-        train_aug = train_augmentation()
-        val_aug = valid_augmentation()
+        train_aug = MoCoSingleAug(img_size=256)
+        val_aug = MoCoSingleAug(img_size=256)
         
         self.trainloader = UniformTrainDataloader(
             dataset_names=dataset_names,
