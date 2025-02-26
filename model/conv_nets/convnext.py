@@ -30,7 +30,6 @@ class Convnext(nn.Module):
         print(f"Loading custom pretrained weights from {checkpoint_path}")
         checkpoint = torch.load(checkpoint_path, map_location='cpu')
         
-        # Handle different checkpoint formats
         if 'state_dict' in checkpoint:
             state_dict = checkpoint['state_dict']
         else:
@@ -72,24 +71,6 @@ train_augmentation = MoCoSingleAug(img_size=256)
 valid_augmentation = MoCoSingleAug(img_size=256)
 
 
-# def get_train_augmentation():
-#     return transforms.Compose([
-#         transforms.Resize(size=(256, 256)),  
-#         transforms.RandomHorizontalFlip(p=0.5),
-#         transforms.RandomRotation(10),
-#         transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
-#         transforms.ToTensor(),
-#         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-#     ])
-
-# def get_val_augmentation(): 
-#     return transforms.Compose([
-#         transforms.Resize(256),
-#         transforms.CenterCrop(224),
-#         transforms.ToTensor(),
-#         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    # ])
-
 class Trainer:
     def __init__(self, config):
         self.config = config
@@ -125,11 +106,9 @@ class Trainer:
         # Checkpoint directory
         os.makedirs(config["checkpoint_dir"], exist_ok=True)
         
-        # Resume from checkpoint if specified
         if config["resume_checkpoint"]:
             self.load_checkpoint(config["resume_checkpoint"])
         
-        # Setup signal handlers for graceful exit
         signal.signal(signal.SIGINT, self.graceful_exit)
         signal.signal(signal.SIGTERM, self.graceful_exit)
         
@@ -385,7 +364,7 @@ if __name__ == "__main__":
     # Configuration
     config = {
         # Model parameters
-        "pretrained_path": "model/new/chckpt/moco/checkpoint_epoch_62.pth",  # Set to None if not using pretrained
+        "pretrained_path": "/checkpoint/trial_0/checkpoint_ep_40.pt",  # Set to None if not using pretrained
         
         # Training parameters
         "num_epochs": 100,
@@ -394,7 +373,7 @@ if __name__ == "__main__":
         "num_workers": 4,
         
         # Checkpoint parameters
-        "checkpoint_dir": "checkpoints/convnext_dr_classification",
+        "checkpoint_dir": "checkpoints/convnext_dr_classification/ijepa",
         "save_interval": 20,  # Save checkpoint every N epochs
         "resume_checkpoint": None,  # Set to checkpoint path if resuming
         
