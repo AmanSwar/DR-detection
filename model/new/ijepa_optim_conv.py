@@ -176,7 +176,7 @@ class Trainer:
         self.save_dir = save_dir if trial is None else os.path.join(save_dir, f"trial_{trial.number}")
         self.save_interval = save_interval
         self.log_interval = log_interval
-        self.device = device
+        self.device = device   
         self.trial = trial
         os.makedirs(self.save_dir, exist_ok=True)
 
