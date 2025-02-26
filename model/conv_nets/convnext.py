@@ -364,7 +364,7 @@ if __name__ == "__main__":
     # Configuration
     config = {
         # Model parameters
-        "pretrained_path": "/checkpoint/trial_0/checkpoint_ep_40.pt",  # Set to None if not using pretrained
+        "pretrained_path": "checkpoint/trial_0/checkpoint_ep_40.pt",  # Set to None if not using pretrained
         
         # Training parameters
         "num_epochs": 100,
