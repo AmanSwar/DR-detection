@@ -704,7 +704,7 @@ class MoCoSingleAug:
         self.base_trans = transforms.Compose(
             [
                 transforms.ToPILImage(),
-                transforms.Resize(size=(img_size , img_size), scale=(0.8, 1.0)),
+                transforms.Resize(size=(img_size , img_size)),
                 CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor()
