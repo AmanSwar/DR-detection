@@ -687,8 +687,6 @@ class MoCoAug:
                 transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
                 CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
                 transforms.RandomHorizontalFlip(),
-                transforms.RandomApply([transforms.ColorJitter(0.8, 0.8, 0.8, 0.2)], p=0.8),
-                transforms.RandomGrayscale(p=0.2),
                 transforms.ToTensor()
             ]
         )
@@ -698,3 +696,25 @@ class MoCoAug:
         im_k = self.base_trans(image)
 
         return im_q , im_k
+    
+
+class MoCoSingleAug:
+
+    def __init__(self , img_size):
+        self.base_trans = transforms.Compose(
+            [
+                transforms.ToPILImage(),
+                transforms.Resize(size=(img_size , img_size), scale=(0.8, 1.0)),
+                CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor()
+            ]
+        )
+
+    def __call__(self,  image):
+
+        trans_img = self.base_trans(image)
+
+        return trans_img
+    
+
