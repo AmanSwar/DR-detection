@@ -388,6 +388,7 @@ def main():
     best_val_loss = float('inf')
     start_epoch = 0
     train_loss = 0
+    val_loss = 0
     try:
         for epoch in range(start_epoch, config["epochs"]):
             logging.info(f"--- Epoch {epoch+1}/{config['epochs']} ---")
