@@ -526,7 +526,8 @@ def main():
     wandb_run = wandb.init(project="DINOv2-DR", config=config)
     best_val_loss = float('inf')
     start_epoch = 0
-    
+    train_loss = 0
+    val_loss = 0
     try:
         for epoch in range(start_epoch, config["total_epochs"]):
             logging.info(f"--- Epoch {epoch+1}/{config['total_epochs']} ---")
