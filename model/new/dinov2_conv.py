@@ -11,7 +11,7 @@ from PIL import Image
 import torch.nn.functional as F
 import math
 import numpy as np
-from data_pipeline import data_aug, data_set
+from data_pipeline import data_set
 
 class DINOv2Loss(nn.Module):
     def __init__(self, out_dim, teacher_temp=0.07, student_temp=0.1, 
@@ -43,25 +43,51 @@ class DINOv2Loss(nn.Module):
         
     #     return loss
 
-    def forward(self, student_output, teacher_output):
-        # Normalize teacher output with the current center
-        teacher_output = teacher_output - self.center
+    # def forward(self, student_output, teacher_output):
+    #     # Normalize teacher output with the current center
+    #     teacher_output = teacher_output - self.center   
 
+    #     student_out = student_output / self.student_temp
+    #     teacher_out = F.softmax(teacher_output / self.teacher_temp, dim=-1)
+    #     teacher_out = teacher_out.detach()
+        
+    #     if teacher_out.shape[0] != student_out.shape[0]:
+    #         # Assumes student_out.shape[0] is an integer multiple of teacher_out.shape[0]
+    #         repeat_factor = student_out.shape[0] // teacher_out.shape[0]
+    #         teacher_out = teacher_out.repeat_interleave(repeat_factor, dim=0)
+        
+    #     # Compute cross-entropy loss between teacher and student distributions
+    #     loss = -torch.sum(teacher_out * F.log_softmax(student_out, dim=-1), dim=-1)
+    #     loss = loss.mean()
+        
+    #     self.update_center(teacher_output)
+        
+    #     return loss
+    def forward(self, student_output, teacher_output):
+        teacher_output = teacher_output - self.center
+        
         student_out = student_output / self.student_temp
         teacher_out = F.softmax(teacher_output / self.teacher_temp, dim=-1)
         teacher_out = teacher_out.detach()
         
+        # More efficient handling of batch size mismatches
         if teacher_out.shape[0] != student_out.shape[0]:
-            # Assumes student_out.shape[0] is an integer multiple of teacher_out.shape[0]
-            repeat_factor = student_out.shape[0] // teacher_out.shape[0]
-            teacher_out = teacher_out.repeat_interleave(repeat_factor, dim=0)
+            # Assumes specific pattern of global vs local crops
+            if student_out.shape[0] % teacher_out.shape[0] == 0:
+                repeat_factor = student_out.shape[0] // teacher_out.shape[0]
+                teacher_out = teacher_out.repeat_interleave(repeat_factor, dim=0)
+            else:
+                # Handle more complex cases if needed
+                pass
         
-        # Compute cross-entropy loss between teacher and student distributions
-        loss = -torch.sum(teacher_out * F.log_softmax(student_out, dim=-1), dim=-1)
-        loss = loss.mean()
+        # Use cross_entropy with more numerical stability
+        loss = torch.nn.functional.cross_entropy(
+            student_out,
+            teacher_out,
+            reduction='mean'
+        )
         
         self.update_center(teacher_output)
-        
         return loss
 
 
@@ -263,10 +289,11 @@ class CosineSchedulerWithWarmup:
         
     def step(self):
         if self.current_epoch < self.warmup_epochs:
-            # Linear warmup
-            lr = self.base_lr * self.current_epoch / self.warmup_epochs
+            # Smoother warmup (square root scaling)
+            progress = self.current_epoch / self.warmup_epochs
+            factor = math.sqrt(progress)
+            lr = self.min_lr + (self.base_lr - self.min_lr) * factor
         else:
-            # Cosine decay
             progress = (self.current_epoch - self.warmup_epochs) / (self.total_epochs - self.warmup_epochs)
             cosine_factor = 0.5 * (1 + math.cos(math.pi * progress))
             lr = self.min_lr + (self.base_lr - self.min_lr) * cosine_factor
@@ -382,20 +409,20 @@ def main():
         "hidden_dim": 1536, 
         "bottleneck_dim": 384,
         "output_dim": 384,
-        "teacher_temp": 0.07,
-        "student_temp": 0.1,
+        "teacher_temp": 0.05,
+        "student_temp": 0.08,
         "warmup_teacher_temp": 0.04,
         "warmup_teacher_temp_epochs": 30,
         "learning_rate": 1e-3,
         "min_lr": 1e-6,
-        "weight_decay": 0.04,
+        "weight_decay": 0.05,
         "warmup_epochs": 10,
         "total_epochs": 250,
-        "drop_path": 0.1,
+        "drop_path": 0.15,
         "local_crops_number": 8,
-        "global_crops_scale": (0.5, 1.0),
-        "local_crops_scale": (0.1, 0.4),
-        "img_size": 256,
+        "global_crops_scale": (0.4, 1.0),
+        "local_crops_scale": (0.05, 0.3),
+        "img_size": 384,
         "batch_size": 32,
     }
     
