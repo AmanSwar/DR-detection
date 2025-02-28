@@ -677,26 +677,94 @@ class SimCLRAug:
 
 # -------------------------------------------------------------------------------------
 
-class MoCoAug:
+# class MoCoAug:
 
-    def __init__(self , img_size):
+#     def __init__(self , img_size):
 
-        self.base_trans = transforms.Compose(
-            [
-                transforms.ToPILImage(),
-                transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
-                CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor()
-            ]
-        )
+#         self.base_trans = transforms.Compose(
+#             [
+#                 transforms.ToPILImage(),
+#                 transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
+#                 CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
+#                 transforms.RandomHorizontalFlip(),
+#                 transforms.ToTensor()
+#             ]
+#         )
 
-    def __call__(self , image):
-        im_q = self.base_trans(image)
-        im_k = self.base_trans(image)
+#     def __call__(self , image):
+#         im_q = self.base_trans(image)
+#         im_k = self.base_trans(image)
 
-        return im_q , im_k
+#         return im_q , im_k
     
+
+class MoCoAug:
+    def __init__(self, img_size=224):
+        # Common transformations
+        self.resize_crop = transforms.RandomResizedCrop(img_size, scale=(0.2, 1.0))
+        self.flip = transforms.RandomHorizontalFlip(p=0.5)
+        self.to_tensor = transforms.ToTensor()
+        self.clahe = CLAHE(clip_limit=2.0, tile_grid_size=(8, 8))
+        
+        # Color augmentations
+        self.color_jitter = transforms.ColorJitter(
+            brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1
+        )
+        self.grayscale = transforms.RandomGrayscale(p=0.2)
+        
+        # Blur augmentations
+        self.gaussian_blur = transforms.GaussianBlur(
+            kernel_size=23, sigma=(0.1, 2.0)
+        )
+        
+        # Rotation for fundus images (preserves circular nature)
+        self.rotation = transforms.RandomRotation(degrees=180)
+        
+        # Additional fundus-specific augmentations
+        self.random_gamma = lambda x: transforms.functional.adjust_gamma(
+            x, gamma=random.uniform(0.7, 1.3)
+        )
+        
+    def __call__(self, image):
+        # Convert to PIL if needed
+        if not isinstance(image, Image.Image):
+            image = transforms.ToPILImage()(image)
+            
+        # Common transforms
+        im_q = self.resize_crop(image)
+        im_k = self.resize_crop(image)
+        
+        # Query image - stronger augmentations
+        im_q = self.flip(im_q)
+        im_q = self.clahe(im_q)
+        if random.random() < 0.8:  # Apply with high probability
+            im_q = self.color_jitter(im_q)
+        if random.random() < 0.2:  # Apply with low probability
+            im_q = self.grayscale(im_q)
+        if random.random() < 0.5:  # Apply with medium probability
+            im_q = self.gaussian_blur(im_q)
+        if random.random() < 0.3:  # Apply rotation sometimes
+            im_q = self.rotation(im_q)
+            
+        # Key image - more conservative augmentations
+        im_k = self.flip(im_k)
+        im_k = self.clahe(im_k)
+        if random.random() < 0.3:  # Lower probability than query
+            im_k = self.color_jitter(im_k)
+        if random.random() < 0.5:  # Apply with medium probability 
+            im_k = self.gaussian_blur(im_k)
+            
+        # Convert to tensor
+        im_q = self.to_tensor(im_q)
+        im_k = self.to_tensor(im_k)
+        
+        # Apply gamma correction (after tensor conversion)
+        if random.random() < 0.3:
+            im_q = self.random_gamma(im_q)
+        if random.random() < 0.3:
+            im_k = self.random_gamma(im_k)
+            
+        return im_q, im_k
 
 class MoCoSingleAug:
 
