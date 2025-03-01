@@ -12,6 +12,14 @@ import torch.nn.functional as F
 import math
 import numpy as np
 from data_pipeline import data_set
+total_memory = torch.cuda.get_device_properties(0).total_memory
+available_memory = torch.cuda.mem_get_info()[0]
+
+total_memory_gb = total_memory / (1024**3)
+available_memory_gb = available_memory / (1024**3)
+
+print(f"Total GPU memory: {total_memory_gb:.2f} GB")
+print(f"Available GPU memory: {available_memory_gb:.2f} GB")
 
 class DINOv2Loss(nn.Module):
     def __init__(self, out_dim, teacher_temp=0.07, student_temp=0.1, 
