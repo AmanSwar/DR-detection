@@ -369,7 +369,7 @@ def validate(student_teacher, dino_loss, data_loader, epoch, device, wandb_run):
     running_loss = 0.0
     
     with torch.no_grad():
-        for i, (images,) in enumerate(data_loader):
+        for i, images in enumerate(data_loader):
             # Move image crops to device
             images = [im.to(device) for im in images]
             
@@ -534,7 +534,6 @@ def main():
             
             current_lr = lr_scheduler.step()
             
-            
             train_loss = train_one_epoch(
                 model, dino_loss, train_loader, optimizer, 
                 lr_scheduler, teacher_momentum_schedule, epoch, device, wandb_run
@@ -556,7 +555,6 @@ def main():
             epoch_ckpt = f"checkpoint_epoch_{epoch+1}.pth"
             save_checkpoint(checkpoint_state, "model/new/chckpt/dinov2", epoch_ckpt)
             
-            # Save best model based on validation loss
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 save_checkpoint(checkpoint_state, "model/new/chckpt/dinov2", "best_checkpoint.pth")
