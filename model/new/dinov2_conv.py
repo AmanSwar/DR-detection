@@ -542,10 +542,10 @@ def main():
             
             current_lr = lr_scheduler.step()    
             
-            # train_loss = train_one_epoch(
-            #     model, dino_loss, train_loader, optimizer, 
-            #     lr_scheduler, teacher_momentum_schedule, epoch, device, wandb_run
-            # )
+            train_loss = train_one_epoch(
+                model, dino_loss, train_loader, optimizer, 
+                lr_scheduler, teacher_momentum_schedule, epoch, device, wandb_run
+            )
             
             # Validate
             #val_loss = validate(model, dino_loss, valid_loader, epoch, device, wandb_run)
@@ -560,12 +560,14 @@ def main():
                 'val_loss': val_loss,
                 'config': config
             }
-            epoch_ckpt = f"checkpoint_epoch_{epoch+1}.pth"
-            save_checkpoint(checkpoint_state, "model/new/chckpt/dinov2", epoch_ckpt)
+
+            if epoch % 10 == 0:
+                epoch_ckpt = f"checkpoint_epoch_{epoch+1}.pth"
+                save_checkpoint(checkpoint_state, "model/new/chckpt/dinov2", epoch_ckpt)
             
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                save_checkpoint(checkpoint_state, "model/new/chckpt/dinov2", "best_checkpoint.pth")
+            # if val_loss < best_val_loss:
+            #     best_val_loss = val_loss
+            #     save_checkpoint(checkpoint_state, "model/new/chckpt/dinov2", "best_checkpoint.pth")
                 
     except KeyboardInterrupt:
         logging.info("KeyboardInterrupt detected! Saving checkpoint before exiting...")
