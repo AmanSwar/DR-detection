@@ -540,12 +540,12 @@ def main():
         for epoch in range(start_epoch, config["total_epochs"]):
             logging.info(f"--- Epoch {epoch+1}/{config['total_epochs']} ---")
             
-            current_lr = lr_scheduler.step()
+            current_lr = lr_scheduler.step()    
             
-            train_loss = train_one_epoch(
-                model, dino_loss, train_loader, optimizer, 
-                lr_scheduler, teacher_momentum_schedule, epoch, device, wandb_run
-            )
+            # train_loss = train_one_epoch(
+            #     model, dino_loss, train_loader, optimizer, 
+            #     lr_scheduler, teacher_momentum_schedule, epoch, device, wandb_run
+            # )
             
             # Validate
             val_loss = validate(model, dino_loss, valid_loader, epoch, device, wandb_run)
