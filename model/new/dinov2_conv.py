@@ -517,12 +517,12 @@ def main():
         num_work=4
     ).get_loader()
     
-    valid_loader = data_set.SSLValidLoader(
-        dataset_names=dataset_names,
-        transformation=transforms_,
-        batch_size=8,
-        num_work=4
-    ).get_loader()
+    # valid_loader = data_set.SSLValidLoader(
+    #     dataset_names=dataset_names,
+    #     transformation=transforms_,
+    #     batch_size=8,
+    #     num_work=4
+    # ).get_loader()
     
     # Adjust momentum schedule based on actual number of iterations
     iterations_per_epoch = len(train_loader)
@@ -548,7 +548,7 @@ def main():
             # )
             
             # Validate
-            val_loss = validate(model, dino_loss, valid_loader, epoch, device, wandb_run)
+            #val_loss = validate(model, dino_loss, valid_loader, epoch, device, wandb_run)
             
             # Save checkpoint after each epoch
             checkpoint_state = {
