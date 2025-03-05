@@ -64,7 +64,7 @@ class MoCoV3Model(nn.Module):
         return q, k
 
     @torch.no_grad()
-    def update_key_encoder(self):
+    def update_key_encoder(self):   
         """Momentum update of key encoder's parameters."""
         for param_q, param_k in zip(self.query_encoder.parameters(), self.key_encoder.parameters()):
             param_k.data = param_k.data * self.m + param_q.data * (1. - self.m)
@@ -322,7 +322,6 @@ def main():
     # Initialize Weights & Biases
     wandb_run = wandb.init(project="MoCoV3-DR", config=config)
 
-    # Build the MoCo v3 model
     model = MoCoV3Model(
         base_model=config["base_model"],
         projection_dim=config["projection_dim"],
@@ -338,13 +337,22 @@ def main():
     # Learning rate scheduler - Cosine Annealing
     scheduler = CosineAnnealingLR(
         optimizer, 
-        T_max=config["epochs"] - config["warm_up_epochs"],  # Total epochs minus warm-up
-        eta_min=config["lr_min"]  # Minimum learning rate
+        T_max=config["epochs"] - config["warm_up_epochs"],
+        eta_min=config["lr_min"]
     )
     
-    # Optional: Implement learning rate warm-up
+    checkpoint_path = "model/new/chckpt/moco/checkpoint_epoch_80.pth"
+    if os.path.exists(checkpoint_path):
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        start_epoch = checkpoint['epoch']
+        logging.info(f"Loaded checkpoint from epoch {start_epoch}")
+    else:
+        logging.info("No checkpoint found, starting from scratch")
+    
     if config["warm_up_epochs"] > 0:
-        # Track initial lr for warm-up
         initial_lr = config["lr"]
         for param_group in optimizer.param_groups:
             param_group['lr'] = config["lr_min"]  # Start with minimum lr
