@@ -357,8 +357,8 @@ def main():
     )
 
     
-    checkpoint_path = "model/new/chckpt/moco/checkpoint_epoch_80.pth"
-    if os.path.exists(checkpoint_path):
+    checkpoint_path = ""
+    if os.path.exists(checkpoint_path): 
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
