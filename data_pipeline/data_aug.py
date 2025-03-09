@@ -657,10 +657,11 @@ class SimCLRAug:
     def __init__(self , img_size):
 
         self.base_trans = transforms.Compose([
-            transforms.ToPILImage(),  # convert tensor image (C x H x W) to PIL Image
-            transforms.RandomResizedCrop(img_size, scale=(0.8, 1.0)),
+            transforms.ToPILImage(),  
+            transforms.RandomResizedCrop(img_size, scale=(0.5, 1.0)),
             CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
             transforms.RandomHorizontalFlip(),
+            transforms.RandomRotation(degrees=20),
             transforms.RandomApply([transforms.ColorJitter(0.8, 0.8, 0.8, 0.2)], p=0.8),
             transforms.RandomGrayscale(p=0.2),
             transforms.ToTensor()
