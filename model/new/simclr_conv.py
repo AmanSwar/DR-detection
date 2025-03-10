@@ -267,13 +267,13 @@ def save_checkpoint(state, checkpoint_dir, filename):
 def main():
     config = {
         "epochs": 300,
-        "batch_size": 64,
-        "lr": 5e-4,
+        "batch_size": 128,
+        "lr": 5e-4  ,
         "lr_min": 1e-5,  
         "warm_up_epochs": 10,
         "temperature": 0.5,
-        "base_model": "convnext_tiny",
-        "projection_dim": 128,
+        "base_model": "convnext_small",
+        "projection_dim": 256,
         "hidden_dim": 512,
         "pretrained": False,
         "checkpoint": "model/new/chckpt/simclr"
@@ -314,7 +314,7 @@ def main():
 
     loss_fn = NTXentLoss(batch_size=config["batch_size"], temperature=config["temperature"], device=device)
 
-    checkpoint_path = None
+    checkpoint_path = "NaN"
     if os.path.exists(checkpoint_path):
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
