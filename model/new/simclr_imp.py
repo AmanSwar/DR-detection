@@ -824,7 +824,7 @@ def main():
     ).get_loader()
 
     # Labeled data loaders for evaluation
-    train_aug = data_aug.SimCLRSingleAug(img_size=256)
+    train_aug = data_aug.SimCLRAug(img_size=256)
     probe_train_loader = data_set.UniformTrainDataloader(
         dataset_names=dataset_names,
         transformation=train_aug,
@@ -833,7 +833,7 @@ def main():
         sampler=True
     ).get_loader()
 
-    val_aug = data_aug.SimCLRSingleAug(img_size=256)
+    val_aug = data_aug.SimCLRAug(img_size=256)
     probe_val_loader = data_set.UniformValidDataloader(
         dataset_names=dataset_names,
         transformation=val_aug,
