@@ -267,7 +267,7 @@ def save_checkpoint(state, checkpoint_dir, filename):
 def main():
     config = {
         "epochs": 300,
-        "batch_size": 128,
+        "batch_size": 80,
         "lr": 5e-4  ,
         "lr_min": 1e-5,  
         "warm_up_epochs": 10,
