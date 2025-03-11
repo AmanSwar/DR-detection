@@ -350,7 +350,7 @@ def main():
         eta_min=config["lr_min"]
     )
 
-    loss_fn = NTXentLoss(batch_size=config["batch_size"], temperature=config["temperature"], device=device)
+    loss_fn = NTXentLoss(temperature=config["temperature"], device=device)
 
     checkpoint_path = "NaN"
     if os.path.exists(checkpoint_path):
