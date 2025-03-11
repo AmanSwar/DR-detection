@@ -38,57 +38,95 @@ class SimCLRModel(nn.Module):
         return h, z
 
 
+# class NTXentLoss(nn.Module):
+#     def __init__(self, batch_size, temperature=0.5, device='cuda'):
+#         super(NTXentLoss, self).__init__()
+#         self.batch_size = batch_size
+#         self.temperature = temperature
+#         self.device = device
+#         self.criterion = nn.CrossEntropyLoss(reduction="sum")
+#         self.mask = self._get_correlated_mask().to(device)
+
+#     def _get_correlated_mask(self):
+#         # Create a mask to remove similarity of samples with themselves and their positive pair
+#         N = 2 * self.batch_size
+#         mask = torch.ones((N, N), dtype=bool)
+#         mask = mask.fill_diagonal_(False)
+#         for i in range(self.batch_size):
+#             mask[i, self.batch_size + i] = False
+#             mask[self.batch_size + i, i] = False
+#         return mask
+
+#     def forward(self, z_i, z_j):
+#         """
+#         Compute NT-Xent loss given two batches of projections.
+#         Args:
+#             z_i: Tensor of shape [batch_size, dim]
+#             z_j: Tensor of shape [batch_size, dim]
+#         """
+       
+#         z = torch.cat([z_i, z_j], dim=0)  
+     
+#         z = nn.functional.normalize(z, dim=1)
+     
+#         similarity_matrix = torch.matmul(z, z.T)  # shape: (2N, 2N)
+
+#         # Positive pairs: diagonal offset by batch_size
+#         sim_ij = torch.diag(similarity_matrix, self.batch_size)
+#         sim_ji = torch.diag(similarity_matrix, -self.batch_size)
+#         positives = torch.cat([sim_ij, sim_ji], dim=0).unsqueeze(1)  # shape: (2N, 1)
+
+#         # Negatives: filter out positives and self-similarities
+#         negatives = similarity_matrix[self.mask].view(2 * self.batch_size, -1)
+
+#         # Concatenate positive and negatives
+#         logits = torch.cat([positives, negatives], dim=1)
+#         logits /= self.temperature
+
+#         # Labels: positive at index 0 for each example
+#         labels = torch.zeros(2 * self.batch_size, dtype=torch.long).to(self.device)
+
+#         loss = self.criterion(logits, labels)
+#         loss /= 2 * self.batch_size
+#         return loss
+
 class NTXentLoss(nn.Module):
-    def __init__(self, batch_size, temperature=0.5, device='cuda'):
+    def __init__(self, temperature=0.5, device='cuda'):
         super(NTXentLoss, self).__init__()
-        self.batch_size = batch_size
         self.temperature = temperature
         self.device = device
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
-        self.mask = self._get_correlated_mask().to(device)
 
-    def _get_correlated_mask(self):
-        # Create a mask to remove similarity of samples with themselves and their positive pair
-        N = 2 * self.batch_size
-        mask = torch.ones((N, N), dtype=bool)
-        mask = mask.fill_diagonal_(False)
-        for i in range(self.batch_size):
-            mask[i, self.batch_size + i] = False
-            mask[self.batch_size + i, i] = False
+    def _get_correlated_mask(self, batch_size):
+        N = 2 * batch_size
+        mask = torch.ones((N, N), dtype=bool).to(self.device)
+        mask.fill_diagonal_(False)
+        for i in range(batch_size):
+            mask[i, batch_size + i] = False
+            mask[batch_size + i, i] = False
         return mask
 
     def forward(self, z_i, z_j):
-        """
-        Compute NT-Xent loss given two batches of projections.
-        Args:
-            z_i: Tensor of shape [batch_size, dim]
-            z_j: Tensor of shape [batch_size, dim]
-        """
-       
-        z = torch.cat([z_i, z_j], dim=0)  
-     
+        batch_size = z_i.shape[0]
+        z = torch.cat([z_i, z_j], dim=0)
         z = nn.functional.normalize(z, dim=1)
-     
-        similarity_matrix = torch.matmul(z, z.T)  # shape: (2N, 2N)
+        similarity_matrix = torch.matmul(z, z.T)
 
+        mask = self._get_correlated_mask(batch_size)
         # Positive pairs: diagonal offset by batch_size
-        sim_ij = torch.diag(similarity_matrix, self.batch_size)
-        sim_ji = torch.diag(similarity_matrix, -self.batch_size)
-        positives = torch.cat([sim_ij, sim_ji], dim=0).unsqueeze(1)  # shape: (2N, 1)
+        sim_ij = torch.diag(similarity_matrix, batch_size)
+        sim_ji = torch.diag(similarity_matrix, -batch_size)
+        positives = torch.cat([sim_ij, sim_ji], dim=0).unsqueeze(1)
 
-        # Negatives: filter out positives and self-similarities
-        negatives = similarity_matrix[self.mask].view(2 * self.batch_size, -1)
-
-        # Concatenate positive and negatives
+        negatives = similarity_matrix[mask].view(2 * batch_size, -1)
         logits = torch.cat([positives, negatives], dim=1)
         logits /= self.temperature
 
-        # Labels: positive at index 0 for each example
-        labels = torch.zeros(2 * self.batch_size, dtype=torch.long).to(self.device)
-
+        labels = torch.zeros(2 * batch_size, dtype=torch.long).to(self.device)
         loss = self.criterion(logits, labels)
-        loss /= 2 * self.batch_size
+        loss /= 2 * batch_size
         return loss
+
 
 
 class LinearProbeHead(nn.Module):
