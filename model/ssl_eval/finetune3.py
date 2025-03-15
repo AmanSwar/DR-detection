@@ -374,8 +374,8 @@ def main():
     ).to(device)
 
     # Data augmentation and loading
-    train_transform = data_aug.TrainTransform(img_size=args.img_size)
-    val_transform = data_aug.ValidTransform(img_size=args.img_size)
+    train_transform = data_aug.MoCoSingleAug(img_size=args.img_size)
+    val_transform = data_aug.MoCoSingleAug(img_size=args.img_size)
 
     dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"]
     
