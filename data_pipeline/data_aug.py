@@ -699,91 +699,216 @@ class SimCLRAug:
 #         return im_q , im_k
     
 
+# class MoCoAug:
+#     def __init__(self, img_size=224):
+#         # Common transformations
+#         self.resize_crop = transforms.RandomResizedCrop(img_size, scale=(0.2, 1.0))
+#         self.flip = transforms.RandomHorizontalFlip(p=0.5)
+#         self.to_tensor = transforms.ToTensor()
+#         self.clahe = CLAHE(clip_limit=2.0, tile_grid_size=(8, 8))
+        
+#         # Color augmentations
+#         self.color_jitter = transforms.ColorJitter(
+#             brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1
+#         )
+#         self.grayscale = transforms.RandomGrayscale(p=0.2)
+        
+#         # Blur augmentations
+#         self.gaussian_blur = transforms.GaussianBlur(
+#             kernel_size=23, sigma=(0.1, 2.0)
+#         )
+        
+#         # Rotation for fundus images (preserves circular nature)
+#         self.rotation = transforms.RandomRotation(degrees=180)
+        
+#         # Additional fundus-specific augmentations
+#         self.random_gamma = lambda x: transforms.functional.adjust_gamma(
+#             x, gamma=random.uniform(0.7, 1.3)
+#         )
+        
+#     def __call__(self, image):
+#         # Convert to PIL if needed
+#         if not isinstance(image, Image.Image):
+#             image = transforms.ToPILImage()(image)
+            
+#         # Common transforms
+#         im_q = self.resize_crop(image)
+#         im_k = self.resize_crop(image)
+        
+#         # Query image - stronger augmentations
+#         im_q = self.flip(im_q)
+#         im_q = self.clahe(im_q)
+#         if random.random() < 0.8:  # Apply with high probability
+#             im_q = self.color_jitter(im_q)
+#         if random.random() < 0.2:  # Apply with low probability
+#             im_q = self.grayscale(im_q)
+#         if random.random() < 0.5:  # Apply with medium probability
+#             im_q = self.gaussian_blur(im_q)
+#         if random.random() < 0.3:  # Apply rotation sometimes
+#             im_q = self.rotation(im_q)
+            
+#         # Key image - more conservative augmentations
+#         im_k = self.flip(im_k)
+#         im_k = self.clahe(im_k)
+#         if random.random() < 0.3:  # Lower probability than query
+#             im_k = self.color_jitter(im_k)
+#         if random.random() < 0.5:  # Apply with medium probability 
+#             im_k = self.gaussian_blur(im_k)
+            
+#         # Convert to tensor
+#         im_q = self.to_tensor(im_q)
+#         im_k = self.to_tensor(im_k)
+        
+#         # Apply gamma correction (after tensor conversion)
+#         if random.random() < 0.3:
+#             im_q = self.random_gamma(im_q)
+#         if random.random() < 0.3:
+#             im_k = self.random_gamma(im_k)
+            
+#         return im_q, im_k
+
 class MoCoAug:
     def __init__(self, img_size=224):
         # Common transformations
-        self.resize_crop = transforms.RandomResizedCrop(img_size, scale=(0.2, 1.0))
+        self.resize_crop = transforms.RandomResizedCrop(
+            img_size, 
+            scale=(0.7, 1.0),  # Less aggressive crop for medical images
+            ratio=(0.9, 1.1)   # Keep aspect ratio closer to original
+        )
         self.flip = transforms.RandomHorizontalFlip(p=0.5)
         self.to_tensor = transforms.ToTensor()
-        self.clahe = CLAHE(clip_limit=2.0, tile_grid_size=(8, 8))
+        self.normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+        )
         
-        # Color augmentations
+        # CLAHE with more appropriate parameters for retinal images
+        self.clahe = CLAHE(clip_limit=random.uniform(1.5, 3.0), tile_grid_size=(8, 8))
+       
+        # More subtle color augmentations to preserve pathological features
         self.color_jitter = transforms.ColorJitter(
-            brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1
+            brightness=0.2,  # Reduced from 0.4
+            contrast=0.2,    # Reduced from 0.4
+            saturation=0.1,  # Reduced from 0.2
+            hue=0.05         # Reduced from 0.1
         )
-        self.grayscale = transforms.RandomGrayscale(p=0.2)
         
-        # Blur augmentations
+        # Reduced grayscale probability
+        self.grayscale = transforms.RandomGrayscale(p=0.05)  # Reduced from 0.15
+       
+        # More appropriate blur settings for retinal vessels
         self.gaussian_blur = transforms.GaussianBlur(
-            kernel_size=23, sigma=(0.1, 2.0)
+            kernel_size=11,  # Reduced from 23/15
+            sigma=(0.1, 1.0) # Reduced sigma range
         )
+       
+        # Limited rotation (90 degrees should be sufficient)
+        self.rotation = transforms.RandomRotation(degrees=90)  # Reduced from 180
         
-        # Rotation for fundus images (preserves circular nature)
-        self.rotation = transforms.RandomRotation(degrees=180)
+        # Gentler elastic transform
+        self.elastic = transforms.ElasticTransform(alpha=15.0, sigma=3.0)  # Reduced from 30.0/4.0
         
-        # Additional fundus-specific augmentations
+        # Subtle gamma adjustment
         self.random_gamma = lambda x: transforms.functional.adjust_gamma(
-            x, gamma=random.uniform(0.7, 1.3)
+            x, gamma=random.uniform(0.85, 1.15)  # Narrower range, was 0.7-1.5
         )
         
+        # Smaller, less frequent cutout with transparency instead of black
+        self.cutout_size = img_size // 16  # Smaller cutout (was /8)
+        
+    def apply_cutout(self, img, p=0.15):  # Reduced probability from 0.3
+        # Apply a gentler cutout that reduces intensity rather than blacks out
+        if random.random() < p and isinstance(img, torch.Tensor):
+            h, w = img.shape[1], img.shape[2]
+            mask = torch.ones_like(img)
+            y = random.randint(0, h - self.cutout_size)
+            x = random.randint(0, w - self.cutout_size)
+            
+            # Use 0.5 instead of 0 to dim the region rather than remove it
+            mask[:, y:y+self.cutout_size, x:x+self.cutout_size] = 0.5
+            return img * mask
+        return img
+       
     def __call__(self, image):
         # Convert to PIL if needed
         if not isinstance(image, Image.Image):
             image = transforms.ToPILImage()(image)
-            
-        # Common transforms
+           
+        # Common transforms with different crops
         im_q = self.resize_crop(image)
         im_k = self.resize_crop(image)
-        
-        # Query image - stronger augmentations
+       
+        # Query image - moderate augmentations
         im_q = self.flip(im_q)
         im_q = self.clahe(im_q)
-        if random.random() < 0.8:  # Apply with high probability
+        if random.random() < 0.7:  # Reduced from 0.9
             im_q = self.color_jitter(im_q)
-        if random.random() < 0.2:  # Apply with low probability
+        if random.random() < 0.05:  # Reduced from 0.2
             im_q = self.grayscale(im_q)
-        if random.random() < 0.5:  # Apply with medium probability
+        if random.random() < 0.4:  # Reduced from 0.6
             im_q = self.gaussian_blur(im_q)
-        if random.random() < 0.3:  # Apply rotation sometimes
+        if random.random() < 0.3:  # Reduced from 0.5
             im_q = self.rotation(im_q)
-            
-        # Key image - more conservative augmentations
+        if random.random() < 0.2:  # Reduced from 0.3
+            im_q = self.elastic(im_q)
+                
+        # Key image - even more conservative augmentations
         im_k = self.flip(im_k)
         im_k = self.clahe(im_k)
-        if random.random() < 0.3:  # Lower probability than query
+        if random.random() < 0.3:  # Reduced from 0.5
             im_k = self.color_jitter(im_k)
-        if random.random() < 0.5:  # Apply with medium probability 
+        if random.random() < 0.0:  # Removed grayscale for key
+            im_k = self.grayscale(im_k)
+        if random.random() < 0.3:  # Reduced from 0.7
             im_k = self.gaussian_blur(im_k)
-            
+        if random.random() < 0.2:  # Reduced from 0.3
+            im_k = self.rotation(im_k)
+           
         # Convert to tensor
         im_q = self.to_tensor(im_q)
         im_k = self.to_tensor(im_k)
         
-        # Apply gamma correction (after tensor conversion)
-        if random.random() < 0.3:
+        # Apply gentler cutout to query image only
+        im_q = self.apply_cutout(im_q, p=0.15)  # Reduced from 0.3
+           
+        # Apply subtle gamma correction
+        if random.random() < 0.3:  # Reduced from 0.4
             im_q = self.random_gamma(im_q)
-        if random.random() < 0.3:
+        if random.random() < 0.2:  # Reduced from 0.3
             im_k = self.random_gamma(im_k)
-            
+        
+        # Always normalize both images
+        im_q = self.normalize(im_q)
+        im_k = self.normalize(im_k)
+           
         return im_q, im_k
-
 class MoCoSingleAug:
-
-    def __init__(self , img_size):
-        self.base_trans = transforms.Compose(
-            [
-                transforms.ToPILImage(),
-                transforms.Resize(size=(img_size , img_size)),
-                CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor()
-            ]
-        )
-
-    def __call__(self,  image):
-
-        trans_img = self.base_trans(image)
-
-        return trans_img
-    
+    def __init__(self, img_size):
+        # For evaluation/finetuning, we need normalization and consistent processing
+        self.base_trans = transforms.Compose([
+            transforms.ToPILImage(),
+            transforms.Resize(size=(int(img_size * 1.1), int(img_size * 1.1))),  # Slightly larger
+            transforms.CenterCrop(img_size),  # Consistent center crop
+            CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
+            # Mild augmentation for fine-tuning
+            transforms.RandomHorizontalFlip(p=0.3),  # Lower probability
+            transforms.RandomRotation(10),  # Slight rotation
+            transforms.ColorJitter(brightness=0.2, contrast=0.2),  # Mild color jitter
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        
+        # For evaluation only (separate transform without augmentations)
+        self.eval_trans = transforms.Compose([
+            transforms.ToPILImage(),
+            transforms.Resize(size=(int(img_size * 1.1), int(img_size * 1.1))),
+            transforms.CenterCrop(img_size),
+            CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        
+    def __call__(self, image, evaluation=False):
+        if evaluation:
+            return self.eval_trans(image)
+        return self.base_trans(image)
 
