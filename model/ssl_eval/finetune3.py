@@ -316,7 +316,7 @@ def save_checkpoint(state, checkpoint_dir, filename):
 
 def main():
     parser = argparse.ArgumentParser(description="Fine-tune MoCo model for Diabetic Retinopathy Classification")
-    parser.add_argument("--checkpoint", type=str, default="model/new/chckpt/moco/checkpoint_epoch_90.pth",
+    parser.add_argument("--checkpoint", type=str, default="model/new/chckpt/moco/checkpoint_epoch_92.pth",
                         help="Path to MoCo checkpoint")
     parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
     parser.add_argument("--freeze_epochs", type=int, default=10, 
