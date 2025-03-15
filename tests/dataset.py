@@ -50,13 +50,14 @@ BATCH_SIZE = 32
 dataset_names = ["eyepacs" , "aptos" , "ddr" , "idrid"]
 # uniform_data_ld = UniformTrainDataloader(
 #     dataset_names=dataset_names,
-#     transformation=IJEPAAugmentation(),
+#     transformation=IJEPAAugmentation(img_size=256),
 #     batch_size=BATCH_SIZE,
 #     num_workers=2,
 #     sampler=True
-# )
+# ).get_loader()
 
-# data_ld = uniform_data_ld.get_loader()
+# # data_ld = uniform_data_ld.get_loader()
+# print(f"Training samples: {len(uniform_data_ld.dataset)}")
 
 # # for img , label in data_ld:
 # #     print(img)
@@ -68,13 +69,13 @@ train_ds = UnitedSSLTrainingDataset("eyepacs" , "aptos" , "ddr" , "idrid" , "mes
 print(len(train_ds))
 
 
-ssl_train_ld = SSLTrainLoader(dataset_names=dataset_names , transformation=IJEPAAugmentation(img_size=256) , batch_size=8 , num_work=2)
+# ssl_train_ld = SSLTrainLoader(dataset_names=dataset_names , transformation=IJEPAAugmentation(img_size=256) , batch_size=8 , num_work=2)
 
-data_ld = ssl_train_ld.get_loader()
-for img in data_ld:
-    print(img.shape)
-    print("\n")
-    break
+# data_ld = ssl_train_ld.get_loader()
+# for img in data_ld:
+#     print(img.shape)
+#     print("\n")
+#     break
 
 
 

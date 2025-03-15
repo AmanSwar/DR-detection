@@ -361,7 +361,6 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    # Configuration
     config = {
         # Model parameters
         "pretrained_path": "checkpoint/trial_0/checkpoint_ep_40.pt",  # Set to None if not using pretrained
@@ -372,9 +371,9 @@ if __name__ == "__main__":
         "learning_rate": 1e-4,
         "num_workers": 4,
         
-        # Checkpoint parameters
+        # Checkpoint parameters         
         "checkpoint_dir": "checkpoints/convnext_dr_classification/ijepa",
-        "save_interval": 20,  # Save checkpoint every N epochs
+        "save_interval": 20,  # Save checkpoint every N epochs  
         "resume_checkpoint": None,  # Set to checkpoint path if resuming
         
         # Logging parameters
@@ -386,4 +385,4 @@ if __name__ == "__main__":
     
     # Initialize and start training
     trainer = Trainer(config)
-    trainer.train()
+    trainer.train() 

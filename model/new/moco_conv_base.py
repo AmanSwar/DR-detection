@@ -432,7 +432,7 @@ def main():
             # Evaluate representations with a linear probe or k-NN
             if (epoch + 1) % 5 == 0:  # Evaluate every 5 epochs to save time
                 linear_probe_evaluation(model, probe_train_loader, probe_val_loader, device, wandb_run)
-                knn_evaluation(model, probe_train_loader, probe_val_loader, device, k=5, wandb_run=wandb_run)
+                knn_evaluation(model, probe_train_loader, probe_val_loader, device, k=6, wandb_run=wandb_run)
 
     except KeyboardInterrupt:
         logging.info("KeyboardInterrupt detected! Saving checkpoint before exiting...")
