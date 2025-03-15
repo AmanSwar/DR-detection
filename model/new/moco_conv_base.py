@@ -85,9 +85,7 @@ class MoCoV3Model(nn.Module):
             self.queue[ptr:ptr + batch_size] = keys
             self.queue_ptr[0] = (ptr + batch_size) % self.queue_size
 
-# -----------------------------
-# 2. MoCo v3 Loss (InfoNCE)
-# -----------------------------
+
 def moco_loss(q, k, queue, temperature=0.2):
     """
     Args:
@@ -111,9 +109,7 @@ def moco_loss(q, k, queue, temperature=0.2):
     loss = nn.CrossEntropyLoss()(logits, labels)
     return loss
 
-# -----------------------------
-# 3. Training & Validation
-# -----------------------------
+
 def train_one_epoch(model, dataloader, optimizer, scheduler, temperature, device, epoch, wandb_run):
     model.train()
     running_loss = 0.0
@@ -169,9 +165,7 @@ def save_checkpoint(state, checkpoint_dir, filename):
     torch.save(state, filepath)
     logging.info(f"Saved checkpoint: {filepath}")
 
-# -----------------------------
-# 4. (NEW) Linear Probe & k-NN Evaluation
-# -----------------------------
+
 class LinearProbeHead(nn.Module):
     """A simple linear classifier for evaluating SSL embeddings."""
     def __init__(self, embed_dim, num_classes=5):
@@ -211,7 +205,7 @@ def linear_probe_evaluation(model, train_loader, val_loader, device, wandb_run):
     val_feats, val_labels = extract_features(model, val_loader, device)
 
     embed_dim = train_feats.shape[1]
-    num_classes = len(train_labels.unique())  # e.g., 5 DR classes
+    num_classes = len(train_labels.unique()) 
     probe = LinearProbeHead(embed_dim, num_classes).to(device)
 
     optimizer = torch.optim.Adam(probe.parameters(), lr=1e-3)
@@ -225,7 +219,6 @@ def linear_probe_evaluation(model, train_loader, val_loader, device, wandb_run):
         train_feats_shuf = train_feats[perm].to(device)
         train_labels_shuf = train_labels[perm].to(device)
 
-        # mini-batch training
         batch_size = 64
         for i in range(0, train_feats_shuf.size(0), batch_size):
             end = i + batch_size
@@ -270,7 +263,6 @@ def knn_evaluation(model, train_loader, val_loader, device, k=5, wandb_run=None)
         dist = np.sum(diff**2, axis=1)           # shape: [N]
         idx = np.argsort(dist)[:k]               # k nearest
         neighbors = train_labels_np[idx]
-        # majority vote
         majority = Counter(neighbors).most_common(1)[0][0]
         if majority == val_labels_np[i]:
             correct += 1
@@ -339,7 +331,7 @@ def main():
         eta_min=config["lr_min"]
     )
     
-    checkpoint_path = "NaN"
+    checkpoint_path = "model/new/chckpt/moco/checkpoint_epoch_92.pth"
     if os.path.exists(checkpoint_path):
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
