@@ -138,6 +138,7 @@ def linear_probe_evaluation(model, train_loader, val_loader, device):
             loss = criterion(outputs, batch_labels)
             loss.backward()
             optimizer.step()
+            print(loss.item())
 
 
     probe.eval()
@@ -174,6 +175,7 @@ def knn_evaluation(model, train_loader, val_loader, device, k=5):
         majority = Counter(neighbors).most_common(1)[0][0]
         if majority == val_labels_np[i]:
             correct += 1
+            
 
     acc = 100.0 * correct / len(val_feats_np)
     print(f"[k-NN (k={k})] Validation Accuracy: {acc:.2f}%")
@@ -191,7 +193,7 @@ scheduler = CosineAnnealingLR(
         T_max=300 - 10,
         eta_min=1e-5
     )
-checkpoint_pth = "model/new/chckpt/moco/checkpoint_epoch_90.pth"
+checkpoint_pth = "model/new/chckpt/moco/checkpoint_epoch_92.pth"
 
 if os.path.exists(checkpoint_pth):
         checkpoint = torch.load(checkpoint_pth, map_location=device)
