@@ -107,7 +107,7 @@ def extract_features(model, dataloader, device):
     all_feats = torch.cat(all_feats, dim=0)
     all_labels = torch.cat(all_labels, dim=0)
     return all_feats, all_labels
-
+import tqdm
 def linear_probe_evaluation(model, train_loader, val_loader, device):
    
     train_feats, train_labels = extract_features(model, train_loader, device)
@@ -121,14 +121,14 @@ def linear_probe_evaluation(model, train_loader, val_loader, device):
     criterion = nn.CrossEntropyLoss()
 
     probe_epochs = 5
-    for ep in range(probe_epochs):
+    for ep in tqdm.tqdm(range(probe_epochs)):
         probe.train()
         perm = torch.randperm(train_feats.size(0))
         train_feats_shuf = train_feats[perm].to(device)
         train_labels_shuf = train_labels[perm].to(device)
 
         batch_size = 64
-        for i in range(0, train_feats_shuf.size(0), batch_size):
+        for i in tqdm.tqdm(range(0, train_feats_shuf.size(0), batch_size)):
             end = i + batch_size
             batch_feats = train_feats_shuf[i:end]
             batch_labels = train_labels_shuf[i:end]
@@ -166,7 +166,7 @@ def knn_evaluation(model, train_loader, val_loader, device, k=5):
 
     correct = 0
     import numpy as np
-    for i in range(len(val_feats_np)):
+    for i in tqdm.tqdm(range(len(val_feats_np))):
         diff = train_feats_np - val_feats_np[i]  # shape: [N, D]
         dist = np.sum(diff**2, axis=1)           # shape: [N]
         idx = np.argsort(dist)[:k]               # k nearest
@@ -175,7 +175,7 @@ def knn_evaluation(model, train_loader, val_loader, device, k=5):
         majority = Counter(neighbors).most_common(1)[0][0]
         if majority == val_labels_np[i]:
             correct += 1
-            
+
 
     acc = 100.0 * correct / len(val_feats_np)
     print(f"[k-NN (k={k})] Validation Accuracy: {acc:.2f}%")
