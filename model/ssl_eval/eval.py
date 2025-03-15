@@ -98,58 +98,91 @@ def extract_features(model, dataloader, device):
     model.eval()
     all_feats = []
     all_labels = []
-    for images, labels in dataloader:
-        images = images.to(device)
-       
-        feats = model.query_encoder(images)  
-        all_feats.append(feats.cpu())
-        all_labels.append(labels)
+    
+    # Add progress bar for feature extraction
+    print(f"Extracting features from {len(dataloader)} batches...")
+    for batch_idx, (images, labels) in enumerate(dataloader):
+        try:
+            # Print progress every 10 batches
+            if batch_idx % 10 == 0:
+                print(f"Processing batch {batch_idx}/{len(dataloader)}")
+            
+            images = images.to(device)
+            feats = model.query_encoder(images)
+            all_feats.append(feats.cpu())
+            all_labels.append(labels)
+        except Exception as e:
+            print(f"Error processing batch {batch_idx}: {str(e)}")
+            # Continue with the next batch
+            continue
+    
+    if not all_feats:
+        raise ValueError("No features were extracted successfully")
+    
     all_feats = torch.cat(all_feats, dim=0)
     all_labels = torch.cat(all_labels, dim=0)
+    print(f"Successfully extracted features: {all_feats.shape}, labels: {all_labels.shape}")
     return all_feats, all_labels
+
+
+
 import tqdm
 def linear_probe_evaluation(model, train_loader, val_loader, device):
-   
-    train_feats, train_labels = extract_features(model, train_loader, device)
-    val_feats, val_labels = extract_features(model, val_loader, device)
+    try:
+        print("Starting feature extraction for linear probe...")
+        train_feats, train_labels = extract_features(model, train_loader, device)
+        val_feats, val_labels = extract_features(model, val_loader, device)
 
-    embed_dim = train_feats.shape[1]
-    num_classes = len(train_labels.unique())
-    probe = LinearProbeHead(embed_dim, num_classes).to(device)
+        print(f"Training linear probe on {train_feats.shape[0]} samples...")
+        embed_dim = train_feats.shape[1]
+        num_classes = len(train_labels.unique())
+        probe = LinearProbeHead(embed_dim, num_classes).to(device)
 
-    optimizer = torch.optim.Adam(probe.parameters(), lr=1e-3)
-    criterion = nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(probe.parameters(), lr=1e-3)
+        criterion = nn.CrossEntropyLoss()
 
-    probe_epochs = 5
-    for ep in tqdm.tqdm(range(probe_epochs)):
-        probe.train()
-        perm = torch.randperm(train_feats.size(0))
-        train_feats_shuf = train_feats[perm].to(device)
-        train_labels_shuf = train_labels[perm].to(device)
+        probe_epochs = 5
+        for ep in range(probe_epochs):
+            probe.train()
+            perm = torch.randperm(train_feats.size(0))
+            train_feats_shuf = train_feats[perm].to(device)
+            train_labels_shuf = train_labels[perm].to(device)
 
-        batch_size = 64
-        for i in tqdm.tqdm(range(0, train_feats_shuf.size(0), batch_size)):
-            end = i + batch_size
-            batch_feats = train_feats_shuf[i:end]
-            batch_labels = train_labels_shuf[i:end]
+            batch_size = 64
+            running_loss = 0.0
+            num_batches = 0
+            
+            for i in range(0, train_feats_shuf.size(0), batch_size):
+                end = min(i + batch_size, train_feats_shuf.size(0))
+                batch_feats = train_feats_shuf[i:end]
+                batch_labels = train_labels_shuf[i:end]
 
-            optimizer.zero_grad()
-            outputs = probe(batch_feats)
-            loss = criterion(outputs, batch_labels)
-            loss.backward()
-            optimizer.step()
-            print(loss.item())
+                optimizer.zero_grad()
+                outputs = probe(batch_feats)
+                loss = criterion(outputs, batch_labels)
+                loss.backward()
+                optimizer.step()
+                
+                running_loss += loss.item()
+                num_batches += 1
+            
+            # Print loss only once per epoch
+            avg_loss = running_loss / num_batches
+            print(f"Epoch {ep+1}/{probe_epochs}, Avg Loss: {avg_loss:.4f}")
 
+        print("Evaluating linear probe...")
+        probe.eval()
+        val_feats_gpu = val_feats.to(device)
+        with torch.no_grad():
+            logits = probe(val_feats_gpu)
+            pred = torch.argmax(logits, dim=1).cpu()
+            acc = (pred == val_labels).float().mean().item() * 100.0
 
-    probe.eval()
-    val_feats_gpu = val_feats.to(device)
-    with torch.no_grad():
-        logits = probe(val_feats_gpu)
-        pred = torch.argmax(logits, dim=1).cpu()
-        acc = (pred == val_labels).float().mean().item() * 100.0
-
-    print(f"[Linear Probe] Validation Accuracy: {acc:.2f}%")
-    return acc
+        print(f"[Linear Probe] Validation Accuracy: {acc:.2f}%")
+        return acc
+    except Exception as e:
+        print(f"Error in linear probe evaluation: {str(e)}")
+        return None
 
 
 def knn_evaluation(model, train_loader, val_loader, device, k=5):
