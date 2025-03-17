@@ -918,7 +918,7 @@ import torch
 import torchvision.transforms as transforms
 from PIL import Image
 from torchvision.transforms import functional as F
-from torchvision.transforms.v2 import RandomCutmix, RandomMixup
+# from torchvision.transforms.v2 import RandomCutmix, RandomMixup
 
 class DiNOV2Aug:
     def __init__(self, img_size=224, global_crops_scale=(0.7, 1.0), local_crops_scale=(0.3, 0.7), 
