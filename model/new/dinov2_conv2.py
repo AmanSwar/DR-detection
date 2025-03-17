@@ -328,7 +328,7 @@ def main():
     
     config = {
         "epochs": 300,
-        "batch_size": 128,
+        "batch_size": 64,
         "lr": 5e-4,
         "lr_min": 1e-5,
         "warm_up_epochs": 10,
