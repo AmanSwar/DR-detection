@@ -12,6 +12,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 
 import timm
 import wandb
+import numpy as np
 
 from data_pipeline import data_aug, data_set
 
@@ -525,7 +526,7 @@ def main():
     except KeyboardInterrupt:
         logging.info("KeyboardInterrupt detected! Saving checkpoint before exiting...")
         checkpoint_state = {
-            'epoch': epoch + 1,
+            'epoch': epoch + 1, 
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'scheduler_state_dict': scheduler.state_dict(),
