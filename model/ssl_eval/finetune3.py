@@ -464,7 +464,6 @@ def main():
             remaining_epochs = args.epochs - epoch
             total_steps = steps_per_epoch * remaining_epochs
             
-            # Create new scheduler
             scheduler = OneCycleLR(
                 optimizer,
                 max_lr=[args.lr / 5, args.lr / 10],
@@ -489,12 +488,6 @@ def main():
             model, val_loader, criterion, device, epoch, wandb_run
         )
         
-        # Update scheduler (for OneCycleLR, should be called after each batch, 
-        # but we're using it at epoch level for simplicity)
-        # scheduler.step() - already handled inside train_one_epoch for each batch
-        
-        # Calculate combined clinical metric (balance of accuracy, sensitivity, specificity)
-        # Higher weight on sensitivity for medical applications
         combined_metric = 0.3 * val_acc + 0.4 * val_sensitivity + 0.3 * val_specificity
         
         # Save checkpoint
