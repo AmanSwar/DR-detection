@@ -115,8 +115,8 @@ def train_one_epoch(model, dataloader, optimizer, scheduler, device, epoch, wand
     model.train()
     running_loss = 0.0
     
-    for i, (views, _) in enumerate(dataloader):  # Ignore labels in self-supervised learning
-        # Each sample is a tuple of two differently augmented views
+    for i, (views) in enumerate(dataloader):
+        
         views = [v.to(device) for v in views]  
         
         # Process both views through the model
