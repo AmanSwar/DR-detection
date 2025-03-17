@@ -73,7 +73,7 @@ class GaussNoise(object):
         np_img = (np_img * 255).astype(np.uint8)
         return Image.fromarray(np_img)
 
-# The main augmentation class using torchvision.transforms
+
 class DINOAugmentation:
     def __init__(self,
                  img_size: int = 224,
@@ -912,3 +912,149 @@ class MoCoSingleAug:
             return self.eval_trans(image)
         return self.base_trans(image)
 
+
+import random
+import torch
+import torchvision.transforms as transforms
+from PIL import Image
+from torchvision.transforms import functional as F
+from torchvision.transforms.v2 import RandomCutmix, RandomMixup
+
+class DiNOV2Aug:
+    def __init__(self, img_size=224, global_crops_scale=(0.7, 1.0), local_crops_scale=(0.3, 0.7), 
+                 n_local_crops=8, local_crops_size=96):
+        self.img_size = img_size
+        self.n_local_crops = n_local_crops
+        self.local_crops_size = local_crops_size
+        
+        # Global crops transformation pipeline (2 crops)
+        self.global_crops_transform = transforms.Compose([
+            transforms.RandomResizedCrop(
+                img_size, 
+                scale=global_crops_scale,
+                ratio=(0.9, 1.1)  # Keep aspect ratio close to original for medical images
+            ),
+            transforms.RandomHorizontalFlip(p=0.5),
+            CLAHE(clip_limit=random.uniform(1.5, 3.0), tile_grid_size=(8, 8)),
+            transforms.RandomApply([
+                transforms.ColorJitter(
+                    brightness=0.2,
+                    contrast=0.2,
+                    saturation=0.1,
+                    hue=0.05
+                )
+            ], p=0.7),
+            transforms.RandomGrayscale(p=0.05),
+            transforms.RandomApply([
+                transforms.GaussianBlur(kernel_size=11, sigma=(0.1, 1.0))
+            ], p=0.4),
+            transforms.RandomApply([
+                transforms.RandomRotation(degrees=90)
+            ], p=0.3),
+            transforms.RandomApply([
+                transforms.ElasticTransform(alpha=15.0, sigma=3.0)
+            ], p=0.2),
+            transforms.ToTensor(),
+            self.random_gamma_transform,
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        
+        # Local crops transformation pipeline (n_local_crops)
+        self.local_crops_transform = transforms.Compose([
+            transforms.RandomResizedCrop(
+                local_crops_size, 
+                scale=local_crops_scale,
+                ratio=(0.9, 1.1)
+            ),
+            transforms.RandomHorizontalFlip(p=0.5),
+            CLAHE(clip_limit=random.uniform(1.5, 3.0), tile_grid_size=(8, 8)),
+            transforms.RandomApply([
+                transforms.ColorJitter(
+                    brightness=0.2,
+                    contrast=0.2,
+                    saturation=0.1,
+                    hue=0.05
+                )
+            ], p=0.7),
+            transforms.RandomGrayscale(p=0.05),
+            transforms.RandomApply([
+                transforms.GaussianBlur(kernel_size=7, sigma=(0.1, 0.8))  # Smaller kernel for local crops
+            ], p=0.4),
+            transforms.RandomApply([
+                transforms.RandomRotation(degrees=90)
+            ], p=0.3),
+            transforms.ToTensor(),
+            self.random_gamma_transform,
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        
+    
+        self.global_cutout_size = img_size // 16
+        self.local_cutout_size = local_crops_size // 16
+        
+    def random_gamma_transform(self, img):
+        """Apply a subtle gamma adjustment with probability 0.3"""
+        if random.random() < 0.3:
+            return F.adjust_gamma(img, gamma=random.uniform(0.85, 1.15))
+        return img
+        
+    def apply_saliency_masking(self, img, is_global=True, p=0.15):
+        """Apply transparent cutout as a form of saliency masking"""
+        if random.random() < p and isinstance(img, torch.Tensor):
+            h, w = img.shape[1], img.shape[2]
+            cutout_size = self.global_cutout_size if is_global else self.local_cutout_size
+            mask = torch.ones_like(img)
+            
+            # Apply 1-3 random cutouts
+            num_cutouts = random.randint(1, 3)
+            for _ in range(num_cutouts):
+                y = random.randint(0, h - cutout_size)
+                x = random.randint(0, w - cutout_size)
+          
+                mask[:, y:y+cutout_size, x:x+cutout_size] = 0.5
+                
+            return img * mask
+        return img
+    
+    def __call__(self, image):
+      
+        # Convert to PIL if needed
+        if not isinstance(image, Image.Image):
+            image = transforms.ToPILImage()(image)
+            
+        # Generate 2 global crops
+        global_crops = [self.global_crops_transform(image) for _ in range(2)]
+        
+        # Apply saliency masking to global crops
+        global_crops = [self.apply_saliency_masking(crop, is_global=True) for crop in global_crops]
+        
+        # Generate local crops
+        local_crops = [self.local_crops_transform(image) for _ in range(self.n_local_crops)]
+        
+        # Apply saliency masking to local crops (with higher probability)
+        local_crops = [self.apply_saliency_masking(crop, is_global=False, p=0.2) for crop in local_crops]
+        
+        # Return all crops as a list
+        return global_crops + local_crops
+
+
+class DiNOSingleAug:
+    """
+    Single view augmentation for evaluation purposes (linear probe, kNN).
+    Uses gentler augmentations since we're preparing for downstream tasks.
+    """
+    def __init__(self, img_size=224):
+        self.transform = transforms.Compose([
+            transforms.Resize(int(img_size * 1.1)),  # Slight oversize 
+            transforms.CenterCrop(img_size),  # Center crop to remove boundary artifacts
+            CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),  # Enhance contrast
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+    
+    def __call__(self, image):
+        # Convert to PIL if needed
+        if not isinstance(image, Image.Image):
+            image = transforms.ToPILImage()(image)
+            
+        return self.transform(image)
