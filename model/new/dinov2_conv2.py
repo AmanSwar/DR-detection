@@ -173,7 +173,7 @@ def validate(model, dataloader, device, epoch, wandb_run):
     running_loss = 0.0
     
     with torch.no_grad():
-        for i, (views, _) in enumerate(dataloader):
+        for i, (views) in enumerate(dataloader):
             views = [v.to(device) for v in views]
             
             all_student_outputs = []
