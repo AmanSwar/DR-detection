@@ -81,10 +81,98 @@ class DinoV2Model(nn.Module):
         self.center = self.center * self.center_momentum + batch_center * (1 - self.center_momentum)
 
 
+# def dino_loss(student_output, teacher_output, teacher_temp, student_temp, center):
+#     """
+#     Compute DINO loss
+#     """
+#     student_out = student_output / student_temp
+#     teacher_out = teacher_output / teacher_temp
+#     teacher_out = teacher_out.detach()  # stop gradient
+    
+#     # Center the teacher output
+#     teacher_centered = teacher_out - center
+    
+#     # Cross-entropy between student and centered teacher predictions
+#     student_out = student_out.chunk(2)
+#     teacher_centered = teacher_centered.chunk(2)
+    
+#     total_loss = 0
+#     n_loss_terms = 0
+#     for iq, q in enumerate(teacher_centered):
+#         for iv, v in enumerate(student_out):
+#             if iq == iv:  # Skip same view
+#                 continue
+#             loss = torch.sum(-q * F.log_softmax(v, dim=-1), dim=-1).mean()
+#             total_loss += loss
+#             n_loss_terms += 1
+    
+#     total_loss /= n_loss_terms
+#     return total_loss
+
+
+# def train_one_epoch(model, dataloader, optimizer, scheduler, device, epoch, wandb_run, 
+#                      m_teacher_momentum, mask_ratio=0.75):
+#     model.train()
+#     running_loss = 0.0
+    
+#     for i, (views) in enumerate(dataloader):
+        
+#         views = [v.to(device) for v in views]  
+        
+#         # Process both views through the model
+#         all_student_outputs = []
+#         all_teacher_outputs = []
+        
+#         # Process the multi-crop views batch 
+#         for view in views:
+#             student_out, teacher_out = model(view)
+#             all_student_outputs.append(student_out)
+#             all_teacher_outputs.append(teacher_out)
+        
+#         # Concatenate all outputs
+#         student_output = torch.cat(all_student_outputs, dim=0)
+#         teacher_output = torch.cat(all_teacher_outputs, dim=0)
+        
+#         # Update center for teacher output
+#         model.update_center(teacher_output)
+        
+#         # Compute loss
+#         loss = dino_loss(
+#             student_output, 
+#             teacher_output, 
+#             model.teacher_temp, 
+#             model.student_temp, 
+#             model.center
+#         )
+        
+#         # Backward pass
+#         optimizer.zero_grad()
+#         loss.backward()
+#         optimizer.step()
+        
+#         # Update teacher network
+#         model.update_teacher(m_teacher_momentum)
+        
+#         running_loss += loss.item()
+#         if i % 10 == 0:
+#             current_lr = optimizer.param_groups[0]['lr']
+#             logging.info(f"Epoch [{epoch+1}] Step [{i}/{len(dataloader)}] Loss: {loss.item():.4f} LR: {current_lr:.6f}")
+#             wandb_run.log({
+#                 "train_loss": loss.item(), 
+#                 "epoch": epoch+1,
+#                 "learning_rate": current_lr
+#             })
+    
+#     scheduler.step()
+#     avg_loss = running_loss / len(dataloader)
+#     return avg_loss
+
+
 def dino_loss(student_output, teacher_output, teacher_temp, student_temp, center):
     """
-    Compute DINO loss
+    Compute DINO loss - fixed to ensure positive loss values
     """
+    # Apply temperature scaling
     student_out = student_output / student_temp
     teacher_out = teacher_output / teacher_temp
     teacher_out = teacher_out.detach()  # stop gradient
@@ -92,38 +180,61 @@ def dino_loss(student_output, teacher_output, teacher_temp, student_temp, center
     # Center the teacher output
     teacher_centered = teacher_out - center
     
-    # Cross-entropy between student and centered teacher predictions
-    student_out = student_out.chunk(2)
-    teacher_centered = teacher_centered.chunk(2)
+    # Get the number of views - assuming these are all packed in a single batch
+    batch_size = student_output.shape[0]
+    n_views = 2  # Assuming 2 global views as in original DINO
     
+    # Compute cross-entropy loss
     total_loss = 0
     n_loss_terms = 0
-    for iq, q in enumerate(teacher_centered):
-        for iv, v in enumerate(student_out):
-            if iq == iv:  # Skip same view
+    
+    for i in range(n_views):
+        for j in range(n_views):
+            if i == j:  # Skip comparing a view with itself
                 continue
-            loss = torch.sum(-q * F.log_softmax(v, dim=-1), dim=-1).mean()
+                
+            # Get the corresponding student and teacher outputs
+            # For batch organization with multiple views, we need to select the correct indices
+            q_idx = torch.arange(i, batch_size, n_views)
+            v_idx = torch.arange(j, batch_size, n_views)
+            
+            q = teacher_centered[q_idx]
+            v = student_out[v_idx]
+            
+            # Cross-entropy loss: teacher (q) acts as target probability distribution
+            # student (v) predictions are compared against it
+            loss = -torch.sum(q * F.log_softmax(v, dim=-1), dim=-1).mean()
             total_loss += loss
             n_loss_terms += 1
     
+    # Average the loss across all terms
     total_loss /= n_loss_terms
     return total_loss
 
-
 def train_one_epoch(model, dataloader, optimizer, scheduler, device, epoch, wandb_run, 
-                     m_teacher_momentum, mask_ratio=0.75):
+                    m_teacher_momentum_schedule, warmup_teacher_temp=0.04, 
+                    warmup_teacher_temp_epochs=30, mask_ratio=0.75):
+    """
+    Train for one epoch with proper handling of teacher momentum schedule
+    """
     model.train()
     running_loss = 0.0
+    iters_per_epoch = len(dataloader)
     
     for i, (views) in enumerate(dataloader):
+        # Get the current iteration and teacher momentum
+        iter_idx = i + epoch * iters_per_epoch
+        current_teacher_temp = m_teacher_momentum_schedule[iter_idx]
+        
+        # Update teacher momentum
+        model.update_teacher(current_teacher_temp)
         
         views = [v.to(device) for v in views]  
         
-        # Process both views through the model
+        # Process the views
         all_student_outputs = []
         all_teacher_outputs = []
         
-        # Process the multi-crop views batch 
         for view in views:
             student_out, teacher_out = model(view)
             all_student_outputs.append(student_out)
@@ -150,9 +261,6 @@ def train_one_epoch(model, dataloader, optimizer, scheduler, device, epoch, wand
         loss.backward()
         optimizer.step()
         
-        # Update teacher network
-        model.update_teacher(m_teacher_momentum)
-        
         running_loss += loss.item()
         if i % 10 == 0:
             current_lr = optimizer.param_groups[0]['lr']
@@ -163,7 +271,6 @@ def train_one_epoch(model, dataloader, optimizer, scheduler, device, epoch, wand
                 "learning_rate": current_lr
             })
     
-    scheduler.step()
     avg_loss = running_loss / len(dataloader)
     return avg_loss
 
