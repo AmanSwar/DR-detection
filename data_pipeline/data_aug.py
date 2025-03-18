@@ -881,37 +881,81 @@ class MoCoAug:
         im_k = self.normalize(im_k)
            
         return im_q, im_k
+# class MoCoSingleAug:
+#     def __init__(self, img_size):
+#         # For evaluation/finetuning, we need normalization and consistent processing
+#         self.base_trans = transforms.Compose([
+#             transforms.ToPILImage(),
+#             transforms.Resize(size=(int(img_size * 1.1), int(img_size * 1.1))),  # Slightly larger
+#             transforms.CenterCrop(img_size),  # Consistent center crop
+#             CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
+#             # Mild augmentation for fine-tuning
+#             transforms.RandomHorizontalFlip(p=0.3),  # Lower probability
+#             transforms.RandomRotation(10),  # Slight rotation
+#             transforms.ColorJitter(brightness=0.2, contrast=0.2),  # Mild color jitter
+#             transforms.ToTensor(),
+#             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+#         ])
+        
+#         # For evaluation only (separate transform without augmentations)
+#         self.eval_trans = transforms.Compose([
+#             transforms.ToPILImage(),
+#             transforms.Resize(size=(int(img_size * 1.1), int(img_size * 1.1))),
+#             transforms.CenterCrop(img_size),
+#             CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
+#             transforms.ToTensor(),
+#             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+#         ])
+        
+#     def __call__(self, image, evaluation=False):
+#         if evaluation:
+#             return self.eval_trans(image)
+#         return self.base_trans(image)
+
 class MoCoSingleAug:
     def __init__(self, img_size):
-        # For evaluation/finetuning, we need normalization and consistent processing
+        # Training pipeline with augmentations
         self.base_trans = transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.Resize(size=(int(img_size * 1.1), int(img_size * 1.1))),  # Slightly larger
-            transforms.CenterCrop(img_size),  # Consistent center crop
-            CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
-            # Mild augmentation for fine-tuning
-            transforms.RandomHorizontalFlip(p=0.3),  # Lower probability
-            transforms.RandomRotation(10),  # Slight rotation
-            transforms.ColorJitter(brightness=0.2, contrast=0.2),  # Mild color jitter
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            # Resize slightly larger then crop to img_size
+            transforms.Resize(size=(int(img_size * 1.1), int(img_size * 1.1))),
+            transforms.CenterCrop(img_size),  # Crop to final size
+            CLAHE(clip_limit=3.0, tile_grid_size=(8, 8)),  # Your CLAHE transform
+            transforms.RandomHorizontalFlip(p=0.3),  # Random flip
+            transforms.RandomRotation(10),  # Random rotation up to 10 degrees
+            transforms.ColorJitter(brightness=0.2, contrast=0.2),  # Color adjustments
+            transforms.ToTensor(),  # Convert PIL Image to Tensor
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],  # ImageNet means
+                std=[0.229, 0.224, 0.225]    # ImageNet stds
+            )
         ])
         
-        # For evaluation only (separate transform without augmentations)
+        # Evaluation pipeline without random augmentations
         self.eval_trans = transforms.Compose([
-            transforms.ToPILImage(),
             transforms.Resize(size=(int(img_size * 1.1), int(img_size * 1.1))),
             transforms.CenterCrop(img_size),
-            CLAHE(clip_limit=2.0, tile_grid_size=(8, 8)),
+            CLAHE(clip_limit=3.0, tile_grid_size=(8, 8)),  # Consistent preprocessing
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
+            )
         ])
-        
+    
     def __call__(self, image, evaluation=False):
+        """
+        Apply the appropriate transform based on mode.
+        
+        Args:
+            image: Input PIL Image
+            evaluation: If True, use eval_trans; else use base_trans
+        
+        Returns:
+            Transformed image as a Tensor
+        """
         if evaluation:
             return self.eval_trans(image)
         return self.base_trans(image)
-
 
 import random
 import torch

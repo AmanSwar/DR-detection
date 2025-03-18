@@ -280,9 +280,9 @@ def main():
     even if the loss is somewhat flat.
     """
 
-    def get_temperature(epoch, max_epochs, initial_temp=0.5, final_temp=0.1):
-        rogress = epoch / max_epochs
-        return initial_temp - progress * (initial_temp - final_temp)
+    # def get_temperature(epoch, max_epochs, initial_temp=0.5, final_temp=0.1):
+    #     rogress = epoch / max_epochs
+    #     return initial_temp - progress * (initial_temp - final_temp)
 
     config = {
         "epochs": 300,
@@ -350,19 +350,19 @@ def main():
     # Unlabeled data loaders for SSL
     dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"]
     transforms_ = data_aug.MoCoAug(img_size=256)
-    train_loader = data_set.SSLTrainLoader(
-        dataset_names=dataset_names,
-        transformation=transforms_,
-        batch_size=config["batch_size"],
-        num_work=4,
-    ).get_loader()
+    # train_loader = data_set.SSLTrainLoader(
+    #     dataset_names=dataset_names,
+    #     transformation=transforms_,
+    #     batch_size=config["batch_size"],
+    #     num_work=4,
+    # ).get_loader()
 
-    valid_loader = data_set.SSLValidLoader(
-        dataset_names=dataset_names,
-        transformation=transforms_,
-        batch_size=8,
-        num_work=4,
-    ).get_loader()
+    # valid_loader = data_set.SSLValidLoader(
+    #     dataset_names=dataset_names,
+    #     transformation=transforms_,
+    #     batch_size=8,
+    #     num_work=4,
+    # ).get_loader()
 
     # Optional: Labeled data loaders for evaluation
     train_aug = data_aug.MoCoSingleAug(img_size=256)
@@ -383,63 +383,66 @@ def main():
         sampler=True
     ).get_loader()
 
-    best_val_loss = float('inf')
-    start_epoch = 0
-    train_loss = 0
-    val_loss = 0
-    try:
-        for epoch in range(start_epoch, config["epochs"]):
-            logging.info(f"--- Epoch {epoch+1}/{config['epochs']} ---")
+    # best_val_loss = float('inf')
+    # start_epoch = 0
+    # train_loss = 0
+    # val_loss = 0
+    # try:
+    #     for epoch in range(start_epoch, config["epochs"]):
+    #         logging.info(f"--- Epoch {epoch+1}/{config['epochs']} ---")
             
-            if epoch < config["warm_up_epochs"]:
-                progress = (epoch + 1) / config["warm_up_epochs"]
-                lr = config["lr_min"] + progress * (initial_lr - config["lr_min"])
-                for param_group in optimizer.param_groups:
-                    param_group['lr'] = lr
-                logging.info(f"Warm-up phase: LR set to {lr:.6f}")
-                wandb_run.log({"learning_rate": lr, "epoch": epoch+1})
-            temperature = get_temperature(epoch, config["epochs"])
-            train_loss = train_one_epoch(model, train_loader, optimizer, scheduler, 
-                                         temperature, device, epoch, wandb_run)
-            val_loss = validate(model, valid_loader, temperature, device, epoch, wandb_run)
+    #         if epoch < config["warm_up_epochs"]:
+    #             progress = (epoch + 1) / config["warm_up_epochs"]
+    #             lr = config["lr_min"] + progress * (initial_lr - config["lr_min"])
+    #             for param_group in optimizer.param_groups:
+    #                 param_group['lr'] = lr
+    #             logging.info(f"Warm-up phase: LR set to {lr:.6f}")
+    #             wandb_run.log({"learning_rate": lr, "epoch": epoch+1})
+    #         temperature = get_temperature(epoch, config["epochs"])
+    #         train_loss = train_one_epoch(model, train_loader, optimizer, scheduler, 
+    #                                      temperature, device, epoch, wandb_run)
+    #         val_loss = validate(model, valid_loader, temperature, device, epoch, wandb_run)
 
-            # Save checkpoint after each epoch
-            checkpoint_state = {
-                'epoch': epoch + 1,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict(),  # Save scheduler state
-                'train_loss': train_loss,
-                'val_loss': val_loss,
-                'config': config
-            }
-            epoch_ckpt = f"checkpoint_epoch_{epoch+1}.pth"
-            save_checkpoint(checkpoint_state, "model/new/chckpt/moco", epoch_ckpt)
+    #         # Save checkpoint after each epoch
+    #         checkpoint_state = {
+    #             'epoch': epoch + 1,
+    #             'model_state_dict': model.state_dict(),
+    #             'optimizer_state_dict': optimizer.state_dict(),
+    #             'scheduler_state_dict': scheduler.state_dict(),  # Save scheduler state
+    #             'train_loss': train_loss,
+    #             'val_loss': val_loss,
+    #             'config': config
+    #         }
+    #         epoch_ckpt = f"checkpoint_epoch_{epoch+1}.pth"
+    #         save_checkpoint(checkpoint_state, "model/new/chckpt/moco", epoch_ckpt)
 
-            # Save best model based on validation loss
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                save_checkpoint(checkpoint_state, "model/new/chckpt/moco", "best_checkpoint.pth")
+    #         # Save best model based on validation loss
+    #         if val_loss < best_val_loss:
+    #             best_val_loss = val_loss
+    #             save_checkpoint(checkpoint_state, "model/new/chckpt/moco", "best_checkpoint.pth")
 
-            # Evaluate representations with a linear probe or k-NN
-            if (epoch + 1) % 5 == 0:  # Evaluate every 5 epochs to save time
-                linear_probe_evaluation(model, probe_train_loader, probe_val_loader, device, wandb_run)
-                knn_evaluation(model, probe_train_loader, probe_val_loader, device, k=6, wandb_run=wandb_run)
+    #         # Evaluate representations with a linear probe or k-NN
+    #         if (epoch + 1) % 5 == 0:  # Evaluate every 5 epochs to save time
+    #             linear_probe_evaluation(model, probe_train_loader, probe_val_loader, device, wandb_run)
+    #             knn_evaluation(model, probe_train_loader, probe_val_loader, device, k=6, wandb_run=wandb_run)
 
-    except KeyboardInterrupt:
-        logging.info("KeyboardInterrupt detected! Saving checkpoint before exiting...")
-        checkpoint_state = {
-            'epoch': epoch + 1,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict(),  # Save scheduler state
-            'train_loss': train_loss,
-            'val_loss': val_loss,
-            'config': config
-        }
-        save_checkpoint(checkpoint_state, "model/new/chckpt/moco", f"interrupt_checkpoint_epoch_{epoch+1}.pth")
-    finally:
-        wandb_run.finish()
+    # except KeyboardInterrupt:
+    #     logging.info("KeyboardInterrupt detected! Saving checkpoint before exiting...")
+    #     checkpoint_state = {
+    #         'epoch': epoch + 1,
+    #         'model_state_dict': model.state_dict(),
+    #         'optimizer_state_dict': optimizer.state_dict(),
+    #         'scheduler_state_dict': scheduler.state_dict(),  # Save scheduler state
+    #         'train_loss': train_loss,
+    #         'val_loss': val_loss,
+    #         'config': config
+    #     }
+    #     save_checkpoint(checkpoint_state, "model/new/chckpt/moco", f"interrupt_checkpoint_epoch_{epoch+1}.pth")
+    # finally:
+    #     wandb_run.finish()
+
+    linear_probe_evaluation(model, probe_train_loader, probe_val_loader, device, wandb_run)
+    knn_evaluation(model, probe_train_loader, probe_val_loader, device, k=6, wandb_run=wandb_run)
 
 if __name__ == "__main__":
     main()
