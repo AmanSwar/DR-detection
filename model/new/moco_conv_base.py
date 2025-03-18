@@ -184,7 +184,7 @@ def extract_features(model, dataloader, device):
     model.eval()
     all_feats = []
     all_labels = []
-    for images, labels in dataloader:
+    for images, labels in tqdm(dataloader):
         images = images.to(device)
         # Use only the query encoder (no projection) or query_encoder+projection
         feats = model.query_encoder(images)  # shape: [B, feature_dim]
