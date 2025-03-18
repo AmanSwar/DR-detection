@@ -331,7 +331,8 @@ def main():
         eta_min=config["lr_min"]
     )
     
-    checkpoint_path = "model/new/chckpt/moco/checkpoint_epoch_5.pth"
+    # checkpoint_path = "model/new/chckpt/moco/checkpoint_epoch_5.pth"
+    checkpoint_path = "NaN"
     if os.path.exists(checkpoint_path):
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
