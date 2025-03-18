@@ -429,14 +429,204 @@ def cosine_scheduler(base_value, final_value, epochs, niter_per_ep, warmup_epoch
     assert len(schedule) == epochs * niter_per_ep
     return schedule
 
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+import io
+from PIL import Image
+
+def monitor_feature_diversity(model, dataloader, device, wandb_run, epoch, num_samples=1000, 
+                              plot_pca=True, plot_tsne=True, class_labels=None):
+    """
+    Monitor feature diversity by visualizing embeddings with dimensionality reduction.
+    
+    Args:
+        model: The DINOv2 model
+        dataloader: Dataloader with labeled samples
+        device: Torch device
+        wandb_run: Wandb run object
+        epoch: Current epoch number
+        num_samples: Maximum number of samples to visualize
+        plot_pca: Whether to plot PCA visualization
+        plot_tsne: Whether to plot t-SNE visualization
+        class_labels: Optional list of class names for legend
+    """
+    model.eval()
+    
+    # Extract features from the backbone
+    all_features = []
+    all_labels = []
+    sample_count = 0
+    
+    with torch.no_grad():
+        for images, labels in dataloader:
+            if sample_count >= num_samples:
+                break
+                
+            current_batch_size = images.size(0)
+            if sample_count + current_batch_size > num_samples:
+                # Only take what we need to reach num_samples
+                images = images[:num_samples - sample_count]
+                labels = labels[:num_samples - sample_count]
+                
+            images = images.to(device)
+            
+            # Extract features from the backbone only (first part of student network)
+            features = model.student[0](images)  # Access the backbone
+            
+            all_features.append(features.cpu().numpy())
+            all_labels.append(labels.numpy())
+            
+            sample_count += images.size(0)
+    
+    # Concatenate all features and labels
+    features = np.vstack(all_features)
+    labels = np.concatenate(all_labels)
+    
+    # Create figures
+    if plot_pca:
+        pca_fig = plot_pca_visualization(features, labels, class_labels)
+        wandb_run.log({"feature_diversity/pca": wandb.Image(pca_fig), "epoch": epoch})
+        plt.close(pca_fig)
+    
+    if plot_tsne:
+        tsne_fig = plot_tsne_visualization(features, labels, class_labels)
+        wandb_run.log({"feature_diversity/tsne": wandb.Image(tsne_fig), "epoch": epoch})
+        plt.close(tsne_fig)
+    
+    # Calculate and log feature statistics
+    feature_norm = np.linalg.norm(features, axis=1)
+    feature_similarity = compute_feature_similarity(features)
+    
+    wandb_run.log({
+        "feature_diversity/mean_norm": np.mean(feature_norm),
+        "feature_diversity/std_norm": np.std(feature_norm),
+        "feature_diversity/mean_similarity": np.mean(feature_similarity),
+        "feature_diversity/std_similarity": np.std(feature_similarity),
+        "epoch": epoch
+    })
+
+
+def plot_pca_visualization(features, labels, class_labels=None):
+    """Create a PCA visualization of the features"""
+    # Apply PCA
+    pca = PCA(n_components=2)
+    pca_result = pca.fit_transform(features)
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    # Get unique labels
+    unique_labels = np.unique(labels)
+    
+    # Plot each class with a different color
+    for i, label in enumerate(unique_labels):
+        indices = labels == label
+        scatter = ax.scatter(pca_result[indices, 0], pca_result[indices, 1], 
+                  alpha=0.6, s=20, label=class_labels[i] if class_labels else f"Class {label}")
+    
+    # Add legend and labels
+    ax.legend()
+    ax.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)')
+    ax.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)')
+    ax.set_title('PCA visualization of features')
+    
+    plt.tight_layout()
+    return fig
+
+
+def plot_tsne_visualization(features, labels, class_labels=None):
+    """Create a t-SNE visualization of the features"""
+    # Apply t-SNE
+    tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(features)-1))
+    tsne_result = tsne.fit_transform(features)
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    # Get unique labels
+    unique_labels = np.unique(labels)
+    
+    # Plot each class with a different color
+    for i, label in enumerate(unique_labels):
+        indices = labels == label
+        scatter = ax.scatter(tsne_result[indices, 0], tsne_result[indices, 1], 
+                  alpha=0.6, s=20, label=class_labels[i] if class_labels else f"Class {label}")
+    
+    # Add legend and labels
+    ax.legend()
+    ax.set_xlabel('t-SNE dimension 1')
+    ax.set_ylabel('t-SNE dimension 2')
+    ax.set_title('t-SNE visualization of features')
+    
+    plt.tight_layout()
+    return fig
+
+
+def compute_feature_similarity(features, sample_size=1000):
+    """Compute average cosine similarity between random pairs of features"""
+    # Normalize features
+    features_norm = features / np.linalg.norm(features, axis=1, keepdims=True)
+    
+    # Sample random pairs if there are too many features
+    n = features.shape[0]
+    if n > sample_size:
+        indices = np.random.choice(n, size=sample_size, replace=False)
+        features_sample = features_norm[indices]
+    else:
+        features_sample = features_norm
+    
+    # Compute similarity matrix
+    similarity_matrix = np.matmul(features_sample, features_sample.T)
+    
+    # Exclude self-similarity (diagonal)
+    mask = np.ones_like(similarity_matrix, dtype=bool)
+    np.fill_diagonal(mask, False)
+    
+    # Return similarities excluding self-similarity
+    return similarity_matrix[mask]
+
+
+def compute_feature_statistics(features):
+    """Compute additional statistics about the feature space"""
+    # Compute feature norms
+    norms = np.linalg.norm(features, axis=1)
+    
+    # Compute feature variance along each dimension
+    dim_variance = np.var(features, axis=0)
+    
+    # Compute the average pairwise distance
+    n_samples = min(1000, features.shape[0])  # Limit computation for large datasets
+    if features.shape[0] > n_samples:
+        indices = np.random.choice(features.shape[0], n_samples, replace=False)
+        sample_features = features[indices]
+    else:
+        sample_features = features
+    
+    # Compute pairwise distances
+    from scipy.spatial.distance import pdist
+    distances = pdist(sample_features, metric='euclidean')
+    
+    return {
+        'mean_norm': np.mean(norms),
+        'std_norm': np.std(norms),
+        'min_norm': np.min(norms),
+        'max_norm': np.max(norms),
+        'mean_dim_variance': np.mean(dim_variance),
+        'mean_pairwise_distance': np.mean(distances),
+        'std_pairwise_distance': np.std(distances),
+    }
+
 
 def main():
     import numpy as np
+    dr_class_labels = ['No DR', 'Mild', 'Moderate', 'Severe', 'Proliferative DR']
     
     config = {
         "epochs": 300,
         "batch_size": 48,
-        "lr": 5e-4,
+        "lr": 1e-4,
         "lr_min": 1e-5,
         "warm_up_epochs": 10,
         "teacher_temp": 0.04,  # Temperature for teacher
@@ -450,7 +640,7 @@ def main():
         "bottleneck_dim": 128,
         "pretrained": True
     }
-
+    
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
@@ -588,7 +778,7 @@ def main():
                 device, 
                 epoch, 
                 wandb_run,
-                m_teacher_momentum=teacher_momentum_schedule[momentum_idx_start]  # Use the first value for logging simplicity
+                m_teacher_momentum_schedule=teacher_momentum_schedule[momentum_idx_start:momentum_idx_end]
             )
             
             # Validate
@@ -604,6 +794,38 @@ def main():
                 'val_loss': val_loss,
                 'config': config
             }
+            if (epoch + 1) % 10 == 0 or epoch == 0:  # Include epoch 0 to see initial state
+                monitor_feature_diversity(
+                    model=model,
+                    dataloader=probe_val_loader,  # Use validation set with labels
+                    device=device,
+                    wandb_run=wandb_run,
+                    epoch=epoch,
+                    num_samples=500,  # Limit to 500 samples for faster computation
+                    plot_pca=True,
+                    plot_tsne=True,
+                    class_labels=dr_class_labels
+                )
+                
+                # Also log feature statistics
+                features, labels = extract_features(model, probe_val_loader, device)
+                feature_stats = compute_feature_statistics(features.numpy())
+                wandb_run.log({f"feature_stats/{k}": v for k, v in feature_stats.items()})
+                
+                # Create a 2D histogram of feature values
+                fig, ax = plt.subplots(figsize=(10, 8))
+                hist = ax.hist2d(
+                    features.numpy().flatten(),
+                    np.zeros_like(features.numpy().flatten()),
+                    bins=[100, 1],
+                    cmap='viridis'
+                )
+                plt.colorbar(hist[3], ax=ax)
+                ax.set_title(f'Feature Distribution (Epoch {epoch+1})')
+                ax.set_xlabel('Feature Value')
+                ax.set_yticks([])
+                wandb_run.log({"feature_diversity/distribution": wandb.Image(fig)})
+                plt.close(fig)
             
             # Save latest checkpoint
             save_checkpoint(checkpoint_state, "model/new/chckpt/dinov2", "checkpoint_latest.pth")
