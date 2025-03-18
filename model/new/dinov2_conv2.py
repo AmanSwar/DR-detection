@@ -167,10 +167,9 @@ class DinoV2Model(nn.Module):
 #     avg_loss = running_loss / len(dataloader)
 #     return avg_loss
 
-
 def dino_loss(student_output, teacher_output, teacher_temp, student_temp, center):
     """
-    Compute DINO loss - fixed to ensure positive loss values
+    Compute DINO loss with proper cross-entropy calculation
     """
     # Apply temperature scaling
     student_out = student_output / student_temp
@@ -180,7 +179,7 @@ def dino_loss(student_output, teacher_output, teacher_temp, student_temp, center
     # Center the teacher output
     teacher_centered = teacher_out - center
     
-    # Get the number of views - assuming these are all packed in a single batch
+    # Get the number of views
     batch_size = student_output.shape[0]
     n_views = 2  # Assuming 2 global views as in original DINO
     
@@ -194,16 +193,14 @@ def dino_loss(student_output, teacher_output, teacher_temp, student_temp, center
                 continue
                 
             # Get the corresponding student and teacher outputs
-            # For batch organization with multiple views, we need to select the correct indices
             q_idx = torch.arange(i, batch_size, n_views)
             v_idx = torch.arange(j, batch_size, n_views)
             
-            q = teacher_centered[q_idx]
+            q = F.softmax(teacher_centered[q_idx], dim=1)  # Convert to probabilities first
             v = student_out[v_idx]
             
-            # Cross-entropy loss: teacher (q) acts as target probability distribution
-            # student (v) predictions are compared against it
-            loss = -torch.sum(q * F.log_softmax(v, dim=-1), dim=-1).mean()
+            # Standard cross-entropy loss
+            loss = torch.mean(-torch.sum(q * F.log_softmax(v, dim=1), dim=1))
             total_loss += loss
             n_loss_terms += 1
     
