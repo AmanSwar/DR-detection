@@ -223,7 +223,7 @@ def train_one_epoch(model, dataloader, optimizer, scheduler, device, epoch, wand
     
     for i, (views) in enumerate(dataloader):
         # Get the current iteration and teacher momentum
-        iter_idx = i + epoch * iters_per_epoch
+        iter_idx = i 
         current_teacher_temp = m_teacher_momentum_schedule[iter_idx]
         
         # Update teacher momentum
@@ -420,13 +420,45 @@ def knn_evaluation(model, train_loader, val_loader, device, k=5, wandb_run=None)
     return acc
 
 
-def cosine_scheduler(base_value, final_value, epochs, niter_per_ep, warmup_epochs=0):
-    """Cosine scheduler with warmup for updating teacher momentum and learning rate"""
-    warmup_schedule = np.linspace(0, base_value, warmup_epochs * niter_per_ep)
-    iters = np.arange(epochs * niter_per_ep - warmup_epochs * niter_per_ep)
-    schedule = final_value + 0.5 * (base_value - final_value) * (1 + np.cos(np.pi * iters / len(iters)))
-    schedule = np.concatenate((warmup_schedule, schedule))
-    assert len(schedule) == epochs * niter_per_ep
+def cosine_scheduler(base_value, final_value, epochs, niter_per_ep, warmup_epochs=0, start_epoch=0):
+    """
+    Cosine scheduler with warmup for updating teacher momentum and learning rate
+    
+    Args:
+        base_value: Initial value after warmup
+        final_value: Final value at the end of training
+        epochs: Total number of epochs
+        niter_per_ep: Number of iterations per epoch
+        warmup_epochs: Number of warmup epochs
+        start_epoch: Starting epoch (for resuming training)
+    """
+    # Only generate the part of the schedule we need from start_epoch onwards
+    total_iters = epochs * niter_per_ep
+    warmup_iters = warmup_epochs * niter_per_ep
+    start_iter = start_epoch * niter_per_ep
+    
+    # Generate warmup schedule if needed and we're starting before or during warmup
+    if warmup_epochs > 0 and start_epoch < warmup_epochs:
+        warmup_remaining = warmup_epochs - start_epoch
+        warmup_schedule = np.linspace(
+            start_epoch/warmup_epochs * base_value if start_epoch > 0 else 0, 
+            base_value, 
+            warmup_remaining * niter_per_ep
+        )
+    else:
+        warmup_schedule = np.array([])
+    
+    # Generate cosine schedule for remaining epochs
+    if start_epoch < epochs:
+        remaining_epochs = epochs - max(start_epoch, warmup_epochs)
+        iters = np.arange(remaining_epochs * niter_per_ep)
+        cosine_schedule = final_value + 0.5 * (base_value - final_value) * (1 + np.cos(np.pi * iters / len(iters)))
+    else:
+        cosine_schedule = np.array([])
+    
+    # Concatenate schedules
+    schedule = np.concatenate((warmup_schedule, cosine_schedule))
+    
     return schedule
 
 import numpy as np
@@ -752,6 +784,21 @@ def main():
     val_loss = 0
     
     try:
+        teacher_momentum_schedule = cosine_scheduler(
+            config["teacher_momentum_base"],
+            config["teacher_momentum_final"],
+            config["epochs"],
+            iters_per_epoch,
+            config["warm_up_epochs"]
+        )
+        momentum_schedule = cosine_scheduler(
+            config["teacher_momentum_base"],
+            config["teacher_momentum_final"],
+            config["epochs"] - start_epoch,  # Remaining epochs
+            iters_per_epoch,
+            max(0, config["warm_up_epochs"] - start_epoch),  # Remaining warmup epochs
+            start_epoch
+        )
         for epoch in range(start_epoch, config["epochs"]):
             logging.info(f"--- Epoch {epoch+1}/{config['epochs']} ---")
             
@@ -766,9 +813,19 @@ def main():
             
             # Train for one epoch
             # We need to pass the correct teacher momentum for this epoch's iterations
-            momentum_idx_start = epoch * iters_per_epoch
-            momentum_idx_end = (epoch + 1) * iters_per_epoch
-            
+            # momentum_idx_start = epoch * iters_per_epoch
+            # momentum_idx_end = (epoch + 1) * iters_per_epoch
+            epoch_momentum_schedule = cosine_scheduler(
+                config["teacher_momentum_base"],
+                config["teacher_momentum_final"],
+                1,  # Just this epoch
+                iters_per_epoch,
+                0 if epoch >= config["warm_up_epochs"] else 1  # No warmup if past warmup epochs
+            )
+
+            epoch_idx = epoch - start_epoch  # Relative epoch index in our new schedule
+            idx_start = epoch_idx * iters_per_epoch
+            idx_end = (epoch_idx + 1) * iters_per_epoch
             # Pass the momentum schedule to the training function
             train_loss = train_one_epoch(
                 model, 
@@ -778,7 +835,8 @@ def main():
                 device, 
                 epoch, 
                 wandb_run,
-                m_teacher_momentum_schedule=teacher_momentum_schedule[momentum_idx_start:momentum_idx_end]
+                # m_teacher_momentum_schedule=teacher_momentum_schedule[momentum_idx_start:momentum_idx_end]
+                m_teacher_momentum_schedule=momentum_schedule[idx_start:idx_end]
             )
             
             # Validate
