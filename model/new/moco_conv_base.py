@@ -1,7 +1,7 @@
 import os
 import logging
 import datetime
-
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -213,14 +213,14 @@ def linear_probe_evaluation(model, train_loader, val_loader, device, wandb_run):
 
     # Simple training loop (few epochs)
     probe_epochs = 5
-    for ep in range(probe_epochs):
+    for ep in tqdm(range(probe_epochs)):
         probe.train()
         perm = torch.randperm(train_feats.size(0))
         train_feats_shuf = train_feats[perm].to(device)
         train_labels_shuf = train_labels[perm].to(device)
 
         batch_size = 64
-        for i in range(0, train_feats_shuf.size(0), batch_size):
+        for i in tqdm(range(0, train_feats_shuf.size(0), batch_size)):
             end = i + batch_size
             batch_feats = train_feats_shuf[i:end]
             batch_labels = train_labels_shuf[i:end]
@@ -304,7 +304,7 @@ def main():
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
-    os.makedirs("model/new/chckpt/moco", exist_ok=True)
+    os.makedirs("model/new/chckpt/moco/new", exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Using device: {device}")
@@ -331,7 +331,7 @@ def main():
         eta_min=config["lr_min"]
     )
     
-    checkpoint_path = "model/new/chckpt/moco/checkpoint_epoch_92.pth"
+    checkpoint_path = "model/new/chckpt/moco/checkpoint_epoch_5.pth"
     if os.path.exists(checkpoint_path):
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -414,12 +414,12 @@ def main():
     #             'config': config
     #         }
     #         epoch_ckpt = f"checkpoint_epoch_{epoch+1}.pth"
-    #         save_checkpoint(checkpoint_state, "model/new/chckpt/moco", epoch_ckpt)
+    #         save_checkpoint(checkpoint_state, "model/new/chckpt/moco/new", epoch_ckpt)
 
     #         # Save best model based on validation loss
     #         if val_loss < best_val_loss:
     #             best_val_loss = val_loss
-    #             save_checkpoint(checkpoint_state, "model/new/chckpt/moco", "best_checkpoint.pth")
+    #             save_checkpoint(checkpoint_state, "model/new/chckpt/moco/new", "best_checkpoint.pth")
 
     #         # Evaluate representations with a linear probe or k-NN
     #         if (epoch + 1) % 5 == 0:  # Evaluate every 5 epochs to save time
@@ -437,7 +437,7 @@ def main():
     #         'val_loss': val_loss,
     #         'config': config
     #     }
-    #     save_checkpoint(checkpoint_state, "model/new/chckpt/moco", f"interrupt_checkpoint_epoch_{epoch+1}.pth")
+    #     save_checkpoint(checkpoint_state, "model/new/chckpt/moco/new", f"interrupt_checkpoint_epoch_{epoch+1}.pth")
     # finally:
     #     wandb_run.finish()
 
