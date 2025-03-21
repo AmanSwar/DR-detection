@@ -338,10 +338,14 @@ def main():
     checkpoint_path = "model/new/chckpt/moco/new/checkpoint_epoch_49.pth"
     if os.path.exists(checkpoint_path):
         checkpoint = torch.load(checkpoint_path, map_location=device)
+        print(f"DEBUG - Checkpoint contains: epoch={checkpoint['epoch']}")
+        if 'optimizer_state_dict' in checkpoint:
+            lr = checkpoint['optimizer_state_dict']['param_groups'][0]['lr']
+            print(f"DEBUG - Checkpoint learning rate: {lr}")
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        start_epoch = checkpoint['epoch']  # This should be 50 if it's epoch_50.pth
+        start_epoch = checkpoint['epoch'] -1 
         if 'val_loss' in checkpoint:
             best_val_loss = checkpoint['val_loss']
         logging.info(f"Loaded checkpoint from epoch {start_epoch}, resuming training from epoch {start_epoch}")
@@ -389,10 +393,7 @@ def main():
         sampler=True
     ).get_loader()
 
-    best_val_loss = float('inf')
-    start_epoch = 0
-    train_loss = 0
-    val_loss = 0
+    
     try:
         for epoch in range(start_epoch, config["epochs"]):
             logging.info(f"--- Epoch {epoch+1}/{config['epochs']} ---")
