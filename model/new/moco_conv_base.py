@@ -219,7 +219,7 @@ def linear_probe_evaluation(model, train_loader, val_loader, device, wandb_run):
         train_feats_shuf = train_feats[perm].to(device)
         train_labels_shuf = train_labels[perm].to(device)
 
-        batch_size = 64
+        batch_size = 8
         for i in tqdm(range(0, train_feats_shuf.size(0), batch_size)):
             end = i + batch_size
             batch_feats = train_feats_shuf[i:end]
@@ -281,7 +281,7 @@ def main():
     """
 
     def get_temperature(epoch, max_epochs, initial_temp=0.5, final_temp=0.1):
-        rogress = epoch / max_epochs
+        progress = epoch / max_epochs
         return initial_temp - progress * (initial_temp - final_temp)
 
     config = {
@@ -331,8 +331,8 @@ def main():
         eta_min=config["lr_min"]
     )
     
-    # checkpoint_path = "model/new/chckpt/moco/checkpoint_epoch_5.pth"
-    checkpoint_path = "NaN"
+    # checkpoint_path = "NaN"
+    checkpoint_path = "model/new/chckpt/moco/new/checkpoint_epoch_50.pth"
     if os.path.exists(checkpoint_path):
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -370,7 +370,7 @@ def main():
     probe_train_loader = data_set.UniformTrainDataloader(
         dataset_names=dataset_names,
         transformation=train_aug,
-        batch_size=64,
+        batch_size=8,
         num_workers=0,
         sampler=True
     ).get_loader()
@@ -422,8 +422,7 @@ def main():
                 best_val_loss = val_loss
                 save_checkpoint(checkpoint_state, "model/new/chckpt/moco/new", "best_checkpoint.pth")
 
-            # Evaluate representations with a linear probe or k-NN
-            if (epoch + 1) % 5 == 0:  # Evaluate every 5 epochs to save time
+            if (epoch + 1) % 5 == 0:  
                 linear_probe_evaluation(model, probe_train_loader, probe_val_loader, device, wandb_run)
                 knn_evaluation(model, probe_train_loader, probe_val_loader, device, k=6, wandb_run=wandb_run)
 
