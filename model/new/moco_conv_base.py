@@ -304,7 +304,7 @@ def main():
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
-    os.makedirs("model/new/chckpt/moco/new", exist_ok=True)
+    os.makedirs("model/new/chckpt/moco/new/new", exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Using device: {device}")
@@ -433,12 +433,12 @@ def main():
                 'config': config
             }
             epoch_ckpt = f"checkpoint_epoch_{epoch+1}.pth"
-            save_checkpoint(checkpoint_state, "model/new/chckpt/moco/new", epoch_ckpt)
+            save_checkpoint(checkpoint_state, "model/new/chckpt/moco/new/new", epoch_ckpt)
 
             # Save best model based on validation loss
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                save_checkpoint(checkpoint_state, "model/new/chckpt/moco/new", "best_checkpoint.pth")
+                save_checkpoint(checkpoint_state, "model/new/chckpt/moco/new/new", "best_checkpoint.pth")
 
             if (epoch + 1) % 5 == 0:  
                 linear_probe_evaluation(model, probe_train_loader, probe_val_loader, device, wandb_run)
@@ -455,7 +455,7 @@ def main():
             'val_loss': val_loss,
             'config': config
         }
-        save_checkpoint(checkpoint_state, "model/new/chckpt/moco/new", f"interrupt_checkpoint_epoch_{epoch+1}.pth")
+        save_checkpoint(checkpoint_state, "model/new/chckpt/moco/new/new", f"interrupt_checkpoint_epoch_{epoch+1}.pth")
     finally:
         wandb_run.finish()
 
