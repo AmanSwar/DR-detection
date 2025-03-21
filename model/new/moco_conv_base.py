@@ -345,7 +345,17 @@ def main():
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        start_epoch = checkpoint['epoch'] -1 
+        if 'queue' in checkpoint:
+            model.queue.copy_(checkpoint['queue'])
+        if 'queue_ptr' in checkpoint:
+            model.queue_ptr.copy_(checkpoint['queue_ptr'])
+        start_epoch = checkpoint['epoch'] - 1
+        for param_group in optimizer.param_groups:
+            print(f"DEBUG - Setting LR to: {param_group['lr']}")
+        temperature = get_temperature(epoch, config["epochs"])
+        print(f"DEBUG - Using temperature: {temperature}")
+
+ 
         if 'val_loss' in checkpoint:
             best_val_loss = checkpoint['val_loss']
         logging.info(f"Loaded checkpoint from epoch {start_epoch}, resuming training from epoch {start_epoch}")
@@ -415,7 +425,9 @@ def main():
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict(),  # Save scheduler state
+                'scheduler_state_dict': scheduler.state_dict(),
+                'queue': model.queue.clone(),  # Save the queue
+                'queue_ptr': model.queue_ptr.clone(),  # Save the queue pointer
                 'train_loss': train_loss,
                 'val_loss': val_loss,
                 'config': config
