@@ -330,16 +330,21 @@ def main():
         T_max=config["epochs"] - config["warm_up_epochs"],
         eta_min=config["lr_min"]
     )
-    
+    start_epoch = 0
+    best_val_loss = float('inf')
+    train_loss = 0
+    val_loss = 0
     # checkpoint_path = "NaN"
-    checkpoint_path = "model/new/chckpt/moco/new/checkpoint_epoch_50.pth"
+    checkpoint_path = "model/new/chckpt/moco/new/checkpoint_epoch_49.pth"
     if os.path.exists(checkpoint_path):
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        start_epoch = checkpoint['epoch']
-        logging.info(f"Loaded checkpoint from epoch {start_epoch}")
+        start_epoch = checkpoint['epoch']  # This should be 50 if it's epoch_50.pth
+        if 'val_loss' in checkpoint:
+            best_val_loss = checkpoint['val_loss']
+        logging.info(f"Loaded checkpoint from epoch {start_epoch}, resuming training from epoch {start_epoch}")
     else:
         logging.info("No checkpoint found, starting from scratch")
     
