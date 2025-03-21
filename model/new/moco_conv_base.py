@@ -352,10 +352,7 @@ def main():
         start_epoch = checkpoint['epoch'] - 1
         for param_group in optimizer.param_groups:
             print(f"DEBUG - Setting LR to: {param_group['lr']}")
-        temperature = get_temperature(epoch, config["epochs"])
-        print(f"DEBUG - Using temperature: {temperature}")
 
- 
         if 'val_loss' in checkpoint:
             best_val_loss = checkpoint['val_loss']
         logging.info(f"Loaded checkpoint from epoch {start_epoch}, resuming training from epoch {start_epoch}")
