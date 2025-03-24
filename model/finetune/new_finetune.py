@@ -497,7 +497,6 @@ def main():
         "domain_adaptation": args.domain_adaptation,
     }
     wandb_run = wandb.init(project="Enhanced-MoCoV3-DR-Finetune", config=config)
-    wandb_run = None
 
     # Initialize model
     model = EnhancedDRClassifier(
