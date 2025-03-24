@@ -17,7 +17,7 @@ from torch.optim.swa_utils import AveragedModel, SWALR
 
 import torchvision
 import timm
-# import wandb
+import wandb
 
 from data_pipeline import data_aug, data_set
 
@@ -387,12 +387,12 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
         if i % 10 == 0:
             current_lr = optimizer.param_groups[0]['lr']
             logging.info(f"Epoch [{epoch+1}] Step [{i}/{len(dataloader)}] Loss: {loss.item():.4f} LR: {current_lr:.6f}")
-            # wandb_run.log({
-            #     "train_loss": loss.item(), 
-            #     "learning_rate": current_lr,
-            #     "batch": i + epoch * len(dataloader),
-            #     "domain_alpha": alpha
-            # })
+            wandb_run.log({
+                "train_loss": loss.item(), 
+                "learning_rate": current_lr,
+                "batch": i + epoch * len(dataloader),
+                "domain_alpha": alpha
+            })
     
     avg_loss = running_loss / len(dataloader)
     
@@ -400,19 +400,19 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
         acc = accuracy_score(all_labels, all_preds)
         f1 = f1_score(all_labels, all_preds, average='weighted')
         
-        # wandb_run.log({
-        #     "train_epoch_loss": avg_loss,
-        #     "train_accuracy": acc,
-        #     "train_f1": f1,
-        #     "epoch": epoch + 1
-        # })
+        wandb_run.log({
+            "train_epoch_loss": avg_loss,
+            "train_accuracy": acc,
+            "train_f1": f1,
+            "epoch": epoch + 1
+        })
         
         return avg_loss, acc, f1
     else:
-        # wandb_run.log({
-        #     "train_epoch_loss": avg_loss,
-        #     "epoch": epoch + 1
-        # })
+        wandb_run.log({
+            "train_epoch_loss": avg_loss,
+            "epoch": epoch + 1
+        })
         
         return avg_loss, None, None
 
@@ -529,27 +529,27 @@ def tta_validate(model, dataloader, device, epoch, wandb_run, lambda_consistency
     logging.info(f"TTA Validation - Epoch: {epoch+1}, Loss: {avg_loss:.4f}, Accuracy: {acc:.4f}, F1: {f1:.4f}")
     logging.info(f"Sensitivity: {avg_sensitivity:.4f}, Specificity: {avg_specificity:.4f}, QWK: {qwk:.4f}")
     
-    # wandb_run.log({
-    #     "val_loss": avg_loss,
-    #     "val_accuracy": acc,
-    #     "val_f1": f1,
-    #     "val_sensitivity": avg_sensitivity,
-    #     "val_specificity": avg_specificity,
-    #     "val_qwk": qwk,
-    #     "val_auc": mean_auc,
-    #     "epoch": epoch + 1
-    # })
+    wandb_run.log({
+        "val_loss": avg_loss,
+        "val_accuracy": acc,
+        "val_f1": f1,
+        "val_sensitivity": avg_sensitivity,
+        "val_specificity": avg_specificity,
+        "val_qwk": qwk,
+        "val_auc": mean_auc,
+        "epoch": epoch + 1
+    })
     
     class_report = classification_report(all_labels, all_preds, output_dict=True)
     
     # Log class-wise metrics
     for i in range(len(sensitivity)):
-        # wandb_run.log({
-        #     f"sensitivity_class{i}": sensitivity[i],
-        #     f"specificity_class{i}": specificity[i],
-        #     f"f1_class{i}": class_report[str(i)]['f1-score'] if str(i) in class_report else 0,
-        #     "epoch": epoch + 1
-        # })
+        wandb_run.log({
+            f"sensitivity_class{i}": sensitivity[i],
+            f"specificity_class{i}": specificity[i],
+            f"f1_class{i}": class_report[str(i)]['f1-score'] if str(i) in class_report else 0,
+            "epoch": epoch + 1
+        })
         pass
     
     return avg_loss, acc, f1, avg_sensitivity, avg_specificity, qwk, mean_auc
@@ -630,27 +630,27 @@ def validate(model, dataloader, device, epoch, wandb_run, lambda_consistency=0.3
     logging.info(f"Validation - Epoch: {epoch+1}, Loss: {avg_loss:.4f}, Accuracy: {acc:.4f}, F1: {f1:.4f}")
     logging.info(f"Sensitivity: {avg_sensitivity:.4f}, Specificity: {avg_specificity:.4f}, QWK: {qwk:.4f}")
     
-    # wandb_run.log({
-    #     "val_loss": avg_loss,
-    #     "val_accuracy": acc,
-    #     "val_f1": f1,
-    #     "val_sensitivity": avg_sensitivity,
-    #     "val_specificity": avg_specificity,
-    #     "val_qwk": qwk,
-    #     "val_auc": mean_auc,
-    #     "epoch": epoch + 1
-    # })
+    wandb_run.log({
+        "val_loss": avg_loss,
+        "val_accuracy": acc,
+        "val_f1": f1,
+        "val_sensitivity": avg_sensitivity,
+        "val_specificity": avg_specificity,
+        "val_qwk": qwk,
+        "val_auc": mean_auc,
+        "epoch": epoch + 1
+    })
     
     class_report = classification_report(all_labels, all_preds, output_dict=True)
     
     # Log class-wise metrics
     for i in range(len(sensitivity)):
-        # wandb_run.log({
-        #     f"sensitivity_class{i}": sensitivity[i],
-        #     f"specificity_class{i}": specificity[i],
-        #     f"f1_class{i}": class_report[str(i)]['f1-score'] if str(i) in class_report else 0,
-        #     "epoch": epoch + 1
-        # })
+        wandb_run.log({
+            f"sensitivity_class{i}": sensitivity[i],
+            f"specificity_class{i}": specificity[i],
+            f"f1_class{i}": class_report[str(i)]['f1-score'] if str(i) in class_report else 0,
+            "epoch": epoch + 1
+        })
         pass
     
     return avg_loss, acc, f1, avg_sensitivity, avg_specificity, qwk, mean_auc
@@ -663,7 +663,7 @@ def save_checkpoint(state, checkpoint_dir, filename):
 
 def main():
     parser = argparse.ArgumentParser(description="Fine-tune MoCo model for Diabetic Retinopathy Classification")
-    parser.add_argument("--checkpoint", type=str, default="model/checkpoint/moco/best_checkpoint.pth",
+    parser.add_argument("--checkpoint", type=str, default="model/new/chckpt/moco/new/best_checkpoint.pth",
                         help="Path to MoCo checkpoint")
     parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
     parser.add_argument("--freeze_epochs", type=int, default=5, 
@@ -692,7 +692,7 @@ def main():
         ]
     )
 
-    checkpoint_dir = "model/new/chckpt/enhanced_finetune"
+    checkpoint_dir = "model/new/chckpt/enhanced_finetune" "chckpt/finetune1"
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -700,7 +700,11 @@ def main():
 
     # Initialize wandb if needed
     # Commented out but keeping structure for future use
-    wandb_run = None
+    wandb_run = wandb.init(
+            project="DR-finetuning_1",
+            config=vars(args),
+            name=f"enhanced_finetune_{args.img_size}_{args.lr}"
+        )
     
     # Initialize model
     model = EnhancedDRClassifier(
@@ -920,6 +924,7 @@ def main():
     logging.info(f"Best validation QWK: {best_val_metrics['qwk']:.4f}")
     logging.info(f"Best validation AUC: {best_val_metrics['auc']:.4f}")
     logging.info(f"Best combined clinical metric: {best_metric:.4f}")
+    wandb_run.finish()
 
 if __name__ == "__main__":
     main()
