@@ -18,29 +18,33 @@ from data_pipeline.data_aug import DinowregAug
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 class UnitedTrainingDataset(Dataset):
     def __init__(self, *args, transformation=None, img_size=1024):
         self.args = args
         self.image_path = []
         self.labels = []
+        self.dataset_counts = {}
+        self.dataset_index = []
+        
         self.transformation = transformation
         self.img_size = img_size
         
-        for arg in args:
+        for i , arg in enumerate(args):
             img_path, label = self.__getdata(arg)
+            self.dataset_counts[arg] = len(img_path)
             # Filter out images with label 5
             filtered_img_path = [path for path, lbl in zip(img_path, label) if lbl != 5]
             filtered_label = [lbl for lbl in label if lbl != 5]
             self.image_path.extend(filtered_img_path)
+            self.dataset_index.extend([i] * len(filtered_img_path))
             self.labels.extend(filtered_label)
 
-        # Logic for shuffling
-        img_path_label_pair = list(zip(self.image_path, self.labels))
-        random.shuffle(img_path_label_pair)
-        random.shuffle(img_path_label_pair)
-        random.shuffle(img_path_label_pair)
-        random.shuffle(img_path_label_pair)
-        self.image_path, self.labels = map(list, zip(*img_path_label_pair))
+        img_path_label_index_triple = list(zip(self.image_path, self.labels, self.dataset_index))
+        random.shuffle(img_path_label_index_triple)
+        random.shuffle(img_path_label_index_triple)
+        self.image_path, self.labels, self.dataset_index = map(list, zip(*img_path_label_index_triple))
     
     def __getdata(self, dataset_name: str) -> Tuple[List[str], List[int]]:
         if dataset_name not in ["eyepacs", "aptos", "ddr", "idrid", "messdr"]:
@@ -75,6 +79,9 @@ class UnitedTrainingDataset(Dataset):
         """To get combined path of all images of given dataset"""
         return self.image_path
     
+    def get_dataset_counts(self):
+        return self.dataset_counts
+    
     def get_labels(self) -> List[int]:
         """Function to return labels"""
         return self.labels
@@ -89,6 +96,7 @@ class UnitedTrainingDataset(Dataset):
     def __getitem__(self, index):
         img_path = self.image_path[index]
         label = self.labels[index]
+        dataset_index = self.dataset_index[index]
         
         try:
             img = Image.open(img_path)
@@ -96,8 +104,8 @@ class UnitedTrainingDataset(Dataset):
                 img = img.convert('RGB')
             if self.transformation is not None:
                 trans_img = self.transformation(img)
-                return trans_img, label
-            return img, label
+                return trans_img, label , dataset_index
+            return img, label , dataset_index
         except (IOError, FileNotFoundError) as e:
             raise RuntimeError(f"Failed to load image {img_path}: {str(e)}")
         except Exception as e:
@@ -212,6 +220,7 @@ class UniformTrainDataloader:
 
             # class weights -> less number of class -> more weightage
             class_weights = {cls: total_samples/count for cls , count in class_counts.items()}
+            # class_weights = torch.tensor([total_samples / class_counts[cls] for cls in sorted(class_counts.keys())], dtype=torch.float).to(device)
 
             sample_weight = [class_weights[label] for label in labels_np]
             weight_tensor = torch.DoubleTensor(sample_weight)
@@ -273,12 +282,14 @@ class UnitedSSLTrainingDataset(Dataset):
     def __init__(self , *args ,transformation=None , img_size=1024):
         self.args = args
         self.image_path = []
+        self.dataset_counts = {}
         self.transformation = transformation
         self.img_size= img_size
 
         for arg in args:
             img_path = self.__getdata(arg)
             self.image_path.extend(img_path)
+            self.dataset_counts[arg] = len(img_path)
             
 
         random.shuffle(self.image_path)
@@ -324,7 +335,8 @@ class UnitedSSLTrainingDataset(Dataset):
         """
 
         return self.image_path
-    
+    def get_dataset_counts(self):
+        return self.dataset_counts
     def __len__(self):
         return len(self.image_path)
     
