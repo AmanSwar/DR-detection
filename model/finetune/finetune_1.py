@@ -909,10 +909,7 @@ def main():
         # Update scheduler
         scheduler.step()
         
-        # Early stopping check
-        if patience_counter >= patience:
-            logging.info(f"Early stopping triggered after {epoch+1} epochs")
-            break
+    
             
     # Final logging
     logging.info("Training complete!")

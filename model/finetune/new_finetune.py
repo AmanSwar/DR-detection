@@ -15,9 +15,11 @@ from torch.optim.lr_scheduler import OneCycleLR
 from torch.nn.utils import clip_grad_norm_
 
 import timm
-import wandb
-
+# import wandb
 from data_pipeline import data_aug, data_set
+
+
+#based on CBAM
 class LesionAttentionModule(nn.Module):
     def __init__(self, in_channels):
         super(LesionAttentionModule, self).__init__()
@@ -27,28 +29,28 @@ class LesionAttentionModule(nn.Module):
         self.fc1 = nn.Conv2d(in_channels, in_channels // 8, kernel_size=1)
         self.relu = nn.ReLU(inplace=True)
         self.fc2 = nn.Conv2d(in_channels // 8, in_channels, kernel_size=1)
-        
-        # Spatial attention path
         self.conv_spatial = nn.Conv2d(2, 1, kernel_size=7, padding=3)
         
     def forward(self, x):
-        # Channel attention
-        avg_pool = self.avg_pool(x)
-        max_pool = self.max_pool(x)
+        #x => (batch_size , 768 , 8 , 8)
+        avg_pool = self.avg_pool(x) # -> (bs , 768 , 1 ,1)
+        max_pool = self.max_pool(x) # -> (bs , 768 , 1 ,1)
         
-        avg_out = self.fc2(self.relu(self.fc1(avg_pool)))
-        max_out = self.fc2(self.relu(self.fc1(max_pool)))
+        avg_out = self.fc2(self.relu(self.fc1(avg_pool)))  # -> (bs , 768 , 1 ,1)
+        max_out = self.fc2(self.relu(self.fc1(max_pool)))# -> (bs , 768 , 1 ,1)
         
         channel_att = torch.sigmoid(avg_out + max_out)
-        x_channel = x * channel_att
+
+        x_channel = x * channel_att #element wise mul -> (bs , 768 , 8 , 8)
         
         # Spatial attention
-        avg_out_spatial = torch.mean(x_channel, dim=1, keepdim=True)
-        max_out_spatial, _ = torch.max(x_channel, dim=1, keepdim=True)
-        spatial_input = torch.cat([avg_out_spatial, max_out_spatial], dim=1)
-        spatial_att = torch.sigmoid(self.conv_spatial(spatial_input))
+        avg_out_spatial = torch.mean(x_channel, dim=1, keepdim=True) # -> average of all channels (bs , 1 , 8 , 8 )
+        max_out_spatial, _ = torch.max(x_channel, dim=1, keepdim=True) # max of all channels (bs , 1 , 8 , 8) 
+        spatial_input = torch.cat([avg_out_spatial, max_out_spatial], dim=1) # bs (bs , 2 , 8 , 8)
+        spatial_att = torch.sigmoid(self.conv_spatial(spatial_input)) # (bs , 1 , 8 , 8)
         
-        return x_channel * spatial_att
+
+        return x_channel * spatial_att #(bs , 768 , 8 , 8)
 
 
 class GradientReversal(torch.autograd.Function):
@@ -99,12 +101,9 @@ class EnhancedDRClassifier(nn.Module):
         
         checkpoint = torch.load(checkpoint_path, map_location='cpu')
         moco_state_dict = checkpoint['model_state_dict']
-        
-
         config = checkpoint['config']
         self.backbone = timm.create_model(config['base_model'], pretrained=False, num_classes=0)
         
-
         backbone_state_dict = {}
         for k, v in moco_state_dict.items():
             if k.startswith('query_encoder.'):
@@ -113,12 +112,11 @@ class EnhancedDRClassifier(nn.Module):
         # Load the weights into the backbone
         self.backbone.load_state_dict(backbone_state_dict)
         
-        # Freeze backbone if required
         if freeze_backbone:
             for param in self.backbone.parameters():
                 param.requires_grad = False
-        
-        # Feature dimension
+
+
         self.feature_dim = self.backbone.num_features
         
         # Add lesion attention module
@@ -307,12 +305,13 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
         if i % 10 == 0:
             current_lr = optimizer.param_groups[0]['lr']
             logging.info(f"Epoch [{epoch+1}] Step [{i}/{len(dataloader)}] Loss: {loss.item():.4f} LR: {current_lr:.6f}")
-            wandb_run.log({
-                "train_loss": loss.item(), 
-                "learning_rate": current_lr,
-                "batch": i + epoch * len(dataloader),
-                "domain_alpha": alpha
-            })
+            # wandb_run.log({
+            #     "train_loss": loss.item(), 
+            #     "learning_rate": current_lr,
+            #     "batch": i + epoch * len(dataloader),
+            #     "domain_alpha": alpha
+            # })
+            wandb_run = None
     
     avg_loss = running_loss / len(dataloader)
     
@@ -320,19 +319,19 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
         acc = accuracy_score(all_labels, all_preds)
         f1 = f1_score(all_labels, all_preds, average='weighted')
         
-        wandb_run.log({
-            "train_epoch_loss": avg_loss,
-            "train_accuracy": acc,
-            "train_f1": f1,
-            "epoch": epoch + 1
-        })
+        # wandb_run.log({
+        #     "train_epoch_loss": avg_loss,
+        #     "train_accuracy": acc,
+        #     "train_f1": f1,
+        #     "epoch": epoch + 1
+        # })
         
         return avg_loss, acc, f1
     else:
-        wandb_run.log({
-            "train_epoch_loss": avg_loss,
-            "epoch": epoch + 1
-        })
+        # wandb_run.log({
+        #     "train_epoch_loss": avg_loss,
+        #     "epoch": epoch + 1
+        # })
         
         return avg_loss, None, None
 
@@ -410,27 +409,27 @@ def validate(model, dataloader, device, epoch, wandb_run, lambda_consistency=0.3
     logging.info(f"Validation - Epoch: {epoch+1}, Loss: {avg_loss:.4f}, Accuracy: {acc:.4f}, F1: {f1:.4f}")
     logging.info(f"Sensitivity: {avg_sensitivity:.4f}, Specificity: {avg_specificity:.4f}, QWK: {qwk:.4f}")
     
-    wandb_run.log({
-        "val_loss": avg_loss,
-        "val_accuracy": acc,
-        "val_f1": f1,
-        "val_sensitivity": avg_sensitivity,
-        "val_specificity": avg_specificity,
-        "val_qwk": qwk,
-        "val_auc": mean_auc,
-        "epoch": epoch + 1
-    })
+    # wandb_run.log({
+    #     "val_loss": avg_loss,
+    #     "val_accuracy": acc,
+    #     "val_f1": f1,
+    #     "val_sensitivity": avg_sensitivity,
+    #     "val_specificity": avg_specificity,
+    #     "val_qwk": qwk,
+    #     "val_auc": mean_auc,
+    #     "epoch": epoch + 1
+    # })
     
     class_report = classification_report(all_labels, all_preds, output_dict=True)
     
     # Log class-wise metrics
     for i in range(len(sensitivity)):
-        wandb_run.log({
-            f"sensitivity_class{i}": sensitivity[i],
-            f"specificity_class{i}": specificity[i],
-            f"f1_class{i}": class_report[str(i)]['f1-score'] if str(i) in class_report else 0,
-            "epoch": epoch + 1
-        })
+        # wandb_run.log({
+        #     f"sensitivity_class{i}": sensitivity[i],
+        #     f"specificity_class{i}": specificity[i],
+        #     f"f1_class{i}": class_report[str(i)]['f1-score'] if str(i) in class_report else 0,
+        #     "epoch": epoch + 1
+        # })
         pass
     
     return avg_loss, acc, f1, avg_sensitivity, avg_specificity, qwk, mean_auc
@@ -446,10 +445,10 @@ def main():
     parser = argparse.ArgumentParser(description="Fine-tune MoCo model for Diabetic Retinopathy Classification")
     parser.add_argument("--checkpoint", type=str, default="model/new/chckpt/moco/new/best_checkpoint.pth",
                         help="Path to MoCo checkpoint")
-    parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
+    parser.add_argument("--epochs", type=int, default=200, help="Number of training epochs")  # Updated to 200
     parser.add_argument("--freeze_epochs", type=int, default=5, 
                         help="Number of epochs to train with frozen backbone")
-    parser.add_argument("--batch_size", type=int, default=128, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--lr_min", type=float, default=1e-6, help="Minimum learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay for optimizer")
@@ -457,7 +456,6 @@ def main():
     parser.add_argument("--img_size", type=int, default=256, help="Image size")
     parser.add_argument("--use_amp", action="store_true", default=True, help="Use automatic mixed precision")
     parser.add_argument("--use_mixup", action="store_true", default=True, help="Use Mixup augmentation")
-    parser.add_argument("--early_stopping", type=int, default=15, help="Early stopping patience")
     parser.add_argument("--lambda_consistency", type=float, default=0.3, help="Weight for grade consistency loss")
     parser.add_argument("--lambda_domain", type=float, default=0.1, help="Weight for domain adaptation loss")
     parser.add_argument("--domain_adaptation", action="store_true", default=True, help="Use domain adaptation")
@@ -496,8 +494,8 @@ def main():
         "lambda_domain": args.lambda_domain,
         "domain_adaptation": args.domain_adaptation,
     }
-    wandb_run = wandb.init(project="Enhanced-MoCoV3-DR-Finetune", config=config)
-
+    # wandb_run = wandb.init(project="Enhanced-MoCoV3-DR-Finetune", config=config)
+    wandb_run = None
     # Initialize model
     model = EnhancedDRClassifier(
         checkpoint_path=args.checkpoint,
@@ -575,7 +573,7 @@ def main():
     # Early stopping
     patience = args.early_stopping
     patience_counter = 0
-    best_metric = 0  # Track best combined clinical metric
+    best_metric = 0 
 
     for epoch in range(args.epochs):
         logging.info(f"--- Epoch {epoch+1}/{args.epochs} ---")
@@ -627,7 +625,6 @@ def main():
         # Update learning rate
         scheduler.step()
         
-        # Calculate combined clinical metric (emphasizing sensitivity and specificity)
         combined_metric = 0.3 * val_acc + 0.4 * val_sensitivity + 0.3 * val_specificity
         
         # Save checkpoint
@@ -690,21 +687,18 @@ def main():
             patience_counter += 1
             
         # Log all best metrics so far
-        wandb_run.log({
-            "best_val_loss": best_val_metrics["loss"],
-            "best_val_accuracy": best_val_metrics["accuracy"],
-            "best_val_f1": best_val_metrics["f1"],
-            "best_val_sensitivity": best_val_metrics["sensitivity"],
-            "best_val_specificity": best_val_metrics["specificity"],
-            "best_val_qwk": best_val_metrics["qwk"],
-            "best_val_auc": best_val_metrics["auc"],
-            "best_combined_metric": best_metric,
-            "epoch": epoch + 1
-        })
+        # wandb_run.log({
+        #     "best_val_loss": best_val_metrics["loss"],
+        #     "best_val_accuracy": best_val_metrics["accuracy"],
+        #     "best_val_f1": best_val_metrics["f1"],
+        #     "best_val_sensitivity": best_val_metrics["sensitivity"],
+        #     "best_val_specificity": best_val_metrics["specificity"],
+        #     "best_val_qwk": best_val_metrics["qwk"],
+        #     "best_val_auc": best_val_metrics["auc"],
+        #     "best_combined_metric": best_metric,
+        #     "epoch": epoch + 1
+        # })
 
-        if patience_counter >= patience:
-            logging.info(f"Early stopping triggered after {epoch+1} epochs")
-            break
             
     # Final logging
     logging.info("Training complete!")
@@ -716,7 +710,7 @@ def main():
     logging.info(f"Best validation QWK: {best_val_metrics['qwk']:.4f}")
     logging.info(f"Best validation AUC: {best_val_metrics['auc']:.4f}")
     
-    wandb_run.finish()
+    # wandb_run.finish()
 
 if __name__ == "__main__":
     main()
