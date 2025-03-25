@@ -494,7 +494,12 @@ def main():
         "lambda_domain": args.lambda_domain,
         "domain_adaptation": args.domain_adaptation,
     }
-    wandb_run = wandb.init(project="Enhanced-MoCoV3-DR-Finetune", config=config)
+    # wandb_run = wandb.init(project="Enhanced-MoCoV3-DR-Finetune", config=config)
+    wandb_run = wandb.init(
+            project="new_finetune_scr",
+            config=vars(args),
+            name=f"enhanced_finetune_{args.img_size}_{args.lr}"
+        )
     # Initialize model
     model = EnhancedDRClassifier(
         checkpoint_path=args.checkpoint,
