@@ -562,7 +562,6 @@ def main():
 
     
     # Early stopping
-    patience = args.early_stopping
     patience_counter = 0
     best_metric = 0 
 
