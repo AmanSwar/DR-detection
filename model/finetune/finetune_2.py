@@ -311,7 +311,6 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
                 "batch": i + epoch * len(dataloader),
                 "domain_alpha": alpha
             })
-            wandb_run = None
     
     avg_loss = running_loss / len(dataloader)
     
