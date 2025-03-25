@@ -481,7 +481,6 @@ def main():
     config = {
         "checkpoint": args.checkpoint,
         "epochs": args.epochs,
-        "freeze_epochs": args.freeze_epochs,
         "batch_size": args.batch_size,
         "lr": args.lr,
         "lr_min": args.lr_min,
@@ -560,13 +559,7 @@ def main():
         "qwk": 0,
         "auc": 0
     }
-    backbone_layers = [
-        model.backbone.stem,
-        model.backbone.stages[0],
-        model.backbone.stages[1],
-        model.backbone.stages[2],
-        model.backbone.stages[3]
-    ]
+
     
     # Early stopping
     patience = args.early_stopping
