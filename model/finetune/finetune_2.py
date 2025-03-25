@@ -15,7 +15,7 @@ from torch.optim.lr_scheduler import OneCycleLR
 from torch.nn.utils import clip_grad_norm_
 
 import timm
-# import wandb
+import wandb
 from data_pipeline import data_aug, data_set
 
 
@@ -305,12 +305,12 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
         if i % 10 == 0:
             current_lr = optimizer.param_groups[0]['lr']
             logging.info(f"Epoch [{epoch+1}] Step [{i}/{len(dataloader)}] Loss: {loss.item():.4f} LR: {current_lr:.6f}")
-            # wandb_run.log({
-            #     "train_loss": loss.item(), 
-            #     "learning_rate": current_lr,
-            #     "batch": i + epoch * len(dataloader),
-            #     "domain_alpha": alpha
-            # })
+            wandb_run.log({
+                "train_loss": loss.item(), 
+                "learning_rate": current_lr,
+                "batch": i + epoch * len(dataloader),
+                "domain_alpha": alpha
+            })
             wandb_run = None
     
     avg_loss = running_loss / len(dataloader)
@@ -319,19 +319,19 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
         acc = accuracy_score(all_labels, all_preds)
         f1 = f1_score(all_labels, all_preds, average='weighted')
         
-        # wandb_run.log({
-        #     "train_epoch_loss": avg_loss,
-        #     "train_accuracy": acc,
-        #     "train_f1": f1,
-        #     "epoch": epoch + 1
-        # })
+        wandb_run.log({
+            "train_epoch_loss": avg_loss,
+            "train_accuracy": acc,
+            "train_f1": f1,
+            "epoch": epoch + 1
+        })
         
         return avg_loss, acc, f1
     else:
-        # wandb_run.log({
-        #     "train_epoch_loss": avg_loss,
-        #     "epoch": epoch + 1
-        # })
+        wandb_run.log({
+            "train_epoch_loss": avg_loss,
+            "epoch": epoch + 1
+        })
         
         return avg_loss, None, None
 
@@ -409,27 +409,27 @@ def validate(model, dataloader, device, epoch, wandb_run, lambda_consistency=0.3
     logging.info(f"Validation - Epoch: {epoch+1}, Loss: {avg_loss:.4f}, Accuracy: {acc:.4f}, F1: {f1:.4f}")
     logging.info(f"Sensitivity: {avg_sensitivity:.4f}, Specificity: {avg_specificity:.4f}, QWK: {qwk:.4f}")
     
-    # wandb_run.log({
-    #     "val_loss": avg_loss,
-    #     "val_accuracy": acc,
-    #     "val_f1": f1,
-    #     "val_sensitivity": avg_sensitivity,
-    #     "val_specificity": avg_specificity,
-    #     "val_qwk": qwk,
-    #     "val_auc": mean_auc,
-    #     "epoch": epoch + 1
-    # })
+    wandb_run.log({
+        "val_loss": avg_loss,
+        "val_accuracy": acc,
+        "val_f1": f1,
+        "val_sensitivity": avg_sensitivity,
+        "val_specificity": avg_specificity,
+        "val_qwk": qwk,
+        "val_auc": mean_auc,
+        "epoch": epoch + 1
+    })
     
     class_report = classification_report(all_labels, all_preds, output_dict=True)
     
     # Log class-wise metrics
     for i in range(len(sensitivity)):
-        # wandb_run.log({
-        #     f"sensitivity_class{i}": sensitivity[i],
-        #     f"specificity_class{i}": specificity[i],
-        #     f"f1_class{i}": class_report[str(i)]['f1-score'] if str(i) in class_report else 0,
-        #     "epoch": epoch + 1
-        # })
+        wandb_run.log({
+            f"sensitivity_class{i}": sensitivity[i],
+            f"specificity_class{i}": specificity[i],
+            f"f1_class{i}": class_report[str(i)]['f1-score'] if str(i) in class_report else 0,
+            "epoch": epoch + 1
+        })
         pass
     
     return avg_loss, acc, f1, avg_sensitivity, avg_specificity, qwk, mean_auc
@@ -493,8 +493,8 @@ def main():
         "lambda_domain": args.lambda_domain,
         "domain_adaptation": args.domain_adaptation,
     }
-    # wandb_run = wandb.init(project="Enhanced-MoCoV3-DR-Finetune", config=config)
-    wandb_run = None
+    wandb_run = wandb.init(project="finetune_freeze_backbone", config=config)
+    # wandb_run = None
     # Initialize model
     model = EnhancedDRClassifier(
         checkpoint_path=args.checkpoint,
@@ -653,17 +653,17 @@ def main():
             patience_counter += 1
             
         # Log all best metrics so far
-        # wandb_run.log({
-        #     "best_val_loss": best_val_metrics["loss"],
-        #     "best_val_accuracy": best_val_metrics["accuracy"],
-        #     "best_val_f1": best_val_metrics["f1"],
-        #     "best_val_sensitivity": best_val_metrics["sensitivity"],
-        #     "best_val_specificity": best_val_metrics["specificity"],
-        #     "best_val_qwk": best_val_metrics["qwk"],
-        #     "best_val_auc": best_val_metrics["auc"],
-        #     "best_combined_metric": best_metric,
-        #     "epoch": epoch + 1
-        # })
+        wandb_run.log({
+            "best_val_loss": best_val_metrics["loss"],
+            "best_val_accuracy": best_val_metrics["accuracy"],
+            "best_val_f1": best_val_metrics["f1"],
+            "best_val_sensitivity": best_val_metrics["sensitivity"],
+            "best_val_specificity": best_val_metrics["specificity"],
+            "best_val_qwk": best_val_metrics["qwk"],
+            "best_val_auc": best_val_metrics["auc"],
+            "best_combined_metric": best_metric,
+            "epoch": epoch + 1
+        })
 
             
     # Final logging
