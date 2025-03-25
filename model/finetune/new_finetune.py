@@ -494,8 +494,8 @@ def main():
         "lambda_domain": args.lambda_domain,
         "domain_adaptation": args.domain_adaptation,
     }
-    # wandb_run = wandb.init(project="Enhanced-MoCoV3-DR-Finetune", config=config)
-    wandb_run = None
+    wandb_run = wandb.init(project="Enhanced-MoCoV3-DR-Finetune", config=config)
+    # wandb_run = None
     # Initialize model
     model = EnhancedDRClassifier(
         checkpoint_path=args.checkpoint,
