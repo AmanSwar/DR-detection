@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.cuda.amp import GradScaler, autocast
-from torch.optim.lr_scheduler import OneCycleLR
+from torch.optim.lr_scheduler import OneCycleLR , CosineAnnealingLR
 from torch.nn.utils import clip_grad_norm_
 
 import timm
@@ -440,26 +440,28 @@ def main():
         sampler=True
     ).get_loader()
 
-    optimizer = optim.AdamW([
-        {'params': model.classifier.parameters(), 'lr': args.lr},
-        {'params': model.grade_head.parameters(), 'lr': args.lr},
-        {'params': model.domain_classifier.parameters(), 'lr': args.lr},
-        {'params': model.attention.parameters(), 'lr': args.lr},  # Reduced from args.lr * 1.5
-        {'params': model.backbone.parameters(), 'lr': args.lr / 10}
-    ], weight_decay=args.weight_decay)
+    # optimizer = optim.AdamW([
+    #     {'params': model.classifier.parameters(), 'lr': args.lr},
+    #     {'params': model.grade_head.parameters(), 'lr': args.lr},
+    #     {'params': model.domain_classifier.parameters(), 'lr': args.lr},
+    #     {'params': model.attention.parameters(), 'lr': args.lr},  # Reduced from args.lr * 1.5
+    #     {'params': model.backbone.parameters(), 'lr': args.lr / 10}
+    # ], weight_decay=args.weight_decay)
 
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     steps_per_epoch = len(train_loader)
     total_steps = steps_per_epoch * args.epochs
 
-    scheduler = OneCycleLR(
-        optimizer,
-        max_lr=[args.lr, args.lr, args.lr, args.lr, args.lr / 10],  # Adjusted max_lr for attention
-        total_steps=total_steps,
-        pct_start=0.1,
-        div_factor=10,
-        final_div_factor=1000,
-        anneal_strategy='cos'
-    )
+    # scheduler = OneCycleLR(
+    #     optimizer,
+    #     max_lr=[args.lr, args.lr, args.lr, args.lr, args.lr / 10],  # Adjusted max_lr for attention
+    #     total_steps=total_steps,
+    #     pct_start=0.1,
+    #     div_factor=10,
+    #     final_div_factor=1000,
+    #     anneal_strategy='cos'
+    # )
+    scheduler = CosineAnnealingLR(optimizer, T_max=100, eta_min=args.lr_min)
 
     scaler = GradScaler() if args.use_amp else None
 

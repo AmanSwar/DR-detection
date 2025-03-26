@@ -25,11 +25,10 @@ random.seed(13102021)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(13102021)
 
-#based on CBAM
+# Based on CBAM
 class LesionAttentionModule(nn.Module):
     def __init__(self, in_channels):
         super(LesionAttentionModule, self).__init__()
-        # Channel attention path
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.max_pool = nn.AdaptiveMaxPool2d(1)
         self.fc1 = nn.Conv2d(in_channels, in_channels // 8, kernel_size=1)
@@ -38,29 +37,23 @@ class LesionAttentionModule(nn.Module):
         self.conv_spatial = nn.Conv2d(2, 1, kernel_size=7, padding=3)
         
     def forward(self, x):
-        #x => (batch_size , 768 , 8 , 8)
-        avg_pool = self.avg_pool(x) # -> (bs , 768 , 1 ,1)
-        max_pool = self.max_pool(x) # -> (bs , 768 , 1 ,1)
+        avg_pool = self.avg_pool(x)
+        max_pool = self.max_pool(x)
         
-        avg_out = self.fc2(self.relu(self.fc1(avg_pool)))  # -> (bs , 768 , 1 ,1)
-        max_out = self.fc2(self.relu(self.fc1(max_pool)))# -> (bs , 768 , 1 ,1)
+        avg_out = self.fc2(self.relu(self.fc1(avg_pool)))
+        max_out = self.fc2(self.relu(self.fc1(max_pool)))
         
         channel_att = torch.sigmoid(avg_out + max_out)
-
-        x_channel = x * channel_att #element wise mul -> (bs , 768 , 8 , 8)
+        x_channel = x * channel_att
         
-        # Spatial attention
-        avg_out_spatial = torch.mean(x_channel, dim=1, keepdim=True) # -> average of all channels (bs , 1 , 8 , 8 )
-        max_out_spatial, _ = torch.max(x_channel, dim=1, keepdim=True) # max of all channels (bs , 1 , 8 , 8) 
-        spatial_input = torch.cat([avg_out_spatial, max_out_spatial], dim=1) # bs (bs , 2 , 8 , 8)
-        spatial_att = torch.sigmoid(self.conv_spatial(spatial_input)) # (bs , 1 , 8 , 8)
+        avg_out_spatial = torch.mean(x_channel, dim=1, keepdim=True)
+        max_out_spatial, _ = torch.max(x_channel, dim=1, keepdim=True)
+        spatial_input = torch.cat([avg_out_spatial, max_out_spatial], dim=1)
+        spatial_att = torch.sigmoid(self.conv_spatial(spatial_input))
         
-
-        return x_channel * spatial_att #(bs , 768 , 8 , 8)
-
+        return x_channel * spatial_att
 
 class GradientReversal(torch.autograd.Function):
-    """Gradient Reversal Layer for domain adaptation"""
     @staticmethod
     def forward(ctx, x, alpha):
         ctx.alpha = alpha
@@ -70,9 +63,7 @@ class GradientReversal(torch.autograd.Function):
     def backward(ctx, grad_output):
         return grad_output.neg() * ctx.alpha, None
 
-
 class GradeConsistencyHead(nn.Module):
-    """Enforces consistency between grade levels (logical ordering)"""
     def __init__(self, feature_dim, num_grades=5):
         super(GradeConsistencyHead, self).__init__()
         self.grade_predictor = nn.Sequential(
@@ -86,45 +77,33 @@ class GradeConsistencyHead(nn.Module):
             nn.Dropout(0.4),
             nn.Linear(256, num_grades)
         )
-        
-        # Ordinal relationship encoder
         self.ordinal_encoder = nn.Sequential(
             nn.Linear(feature_dim, 256),
             nn.GELU(),
-            nn.Linear(256, num_grades - 1)  # Predict binary thresholds between grades
+            nn.Linear(256, num_grades - 1)
         )
         
     def forward(self, x):
         logits = self.grade_predictor(x)
         ordinal_thresholds = self.ordinal_encoder(x)
-        
         return logits, ordinal_thresholds
-
 
 class EnhancedDRClassifier(nn.Module):
     def __init__(self, checkpoint_path, num_classes=5, freeze_backbone=True):
         super(EnhancedDRClassifier, self).__init__()
-        
         checkpoint = torch.load(checkpoint_path, map_location='cpu')
         moco_state_dict = checkpoint['model_state_dict']
         config = checkpoint['config']
         self.backbone = timm.create_model(config['base_model'], pretrained=False, num_classes=0)
         
-        backbone_state_dict = {}
-        for k, v in moco_state_dict.items():
-            if k.startswith('query_encoder.'):
-                backbone_state_dict[k.replace('query_encoder.', '')] = v
-        
+        backbone_state_dict = {k.replace('query_encoder.', ''): v for k, v in moco_state_dict.items() if k.startswith('query_encoder.')}
         self.backbone.load_state_dict(backbone_state_dict)
         
         if freeze_backbone:
             for param in self.backbone.parameters():
                 param.requires_grad = False
 
-
         self.feature_dim = self.backbone.num_features
-        
-        # Add lesion attention module
         self.attention = LesionAttentionModule(self.feature_dim)
         
         self.classifier = nn.Sequential(
@@ -140,13 +119,10 @@ class EnhancedDRClassifier(nn.Module):
         )
         
         self.grade_head = GradeConsistencyHead(self.feature_dim, num_grades=num_classes)
-        
-
-        #classify the domain -> from the dataset
         self.domain_classifier = nn.Sequential(
             nn.Linear(self.feature_dim, 256),
             nn.ReLU(inplace=True),
-            nn.Linear(256, 5)  
+            nn.Linear(256, 5)
         )
         
         self.register_buffer('prototypes', torch.zeros(num_classes, self.feature_dim))
@@ -166,22 +142,13 @@ class EnhancedDRClassifier(nn.Module):
                     nn.init.constant_(m.bias, 0)
         
     def forward(self, x, alpha=0.0, get_attention=False, update_prototypes=False, labels=None):
-        # Get features from backbone
         features = self.backbone.forward_features(x)
-        # print("Backbone features shape:", features.shape)
-        # Apply attention
         attended_features = self.attention(features)
-        
-        # Global average pooling for attended features
         h = torch.mean(attended_features, dim=(2, 3))
         
-        # Main class prediction
         logits = self.classifier(h)
-        
-        # Grade consistency prediction
         grade_probs = self.grade_head(h)
         
-        # Update prototypes during training if requested
         if update_prototypes and labels is not None:
             with torch.no_grad():
                 for i, label in enumerate(labels):
@@ -189,7 +156,6 @@ class EnhancedDRClassifier(nn.Module):
                                            h[i] * (1 / (self.prototype_counts[label] + 1))
                     self.prototype_counts[label] += 1
         
-        # Domain classification with gradient reversal
         if alpha > 0:
             reversed_features = GradientReversal.apply(h, alpha)
             domain_logits = self.domain_classifier(reversed_features)
@@ -198,49 +164,39 @@ class EnhancedDRClassifier(nn.Module):
         
         if get_attention:
             return logits, grade_probs, domain_logits, h, attended_features
-        
         return logits, grade_probs, domain_logits
     
     def unfreeze_backbone(self):
         for param in self.backbone.parameters():
             param.requires_grad = True
 
-
-def OrdinalDomainLoss(outputs, labels, grade_outputs=None, domain_logits=None, domain_labels=None, lambda_consistency=0.3, lambda_domain=0.1):
-    # Main classification loss
+def OrdinalDomainLoss(outputs, labels, grade_outputs=None, domain_logits=None, domain_labels=None, lambda_consistency=0.1, lambda_domain=0.05):
     main_criterion = nn.CrossEntropyLoss()
     main_loss = main_criterion(outputs, labels)
-    
     loss = main_loss
     
-    # Enhanced grade consistency loss
     if grade_outputs is not None:
         grade_logits, ordinal_thresholds = grade_outputs
         batch_size = labels.size(0)
         num_classes = grade_logits.size(1)
         
-        # Standard grade logits loss
         targets = torch.zeros_like(grade_logits)
         for i in range(batch_size):
             targets[i, :labels[i]+1] = 1.0
             
         consistency_loss = F.binary_cross_entropy_with_logits(grade_logits, targets)
         
-        # Ordinal regression loss for thresholds
-        # For each threshold k, if class > k then threshold k should be 1, else 0
         if ordinal_thresholds is not None:
             ordinal_targets = torch.zeros_like(ordinal_thresholds)
             for i in range(batch_size):
                 for k in range(ordinal_thresholds.size(1)):
                     if labels[i] > k:
                         ordinal_targets[i, k] = 1.0
-            
             ordinal_loss = F.binary_cross_entropy_with_logits(ordinal_thresholds, ordinal_targets)
             consistency_loss = 0.7 * consistency_loss + 0.3 * ordinal_loss
         
         loss += lambda_consistency * consistency_loss
     
-    # Domain classification loss if available
     if domain_logits is not None and domain_labels is not None:
         domain_criterion = nn.CrossEntropyLoss()
         domain_loss = domain_criterion(domain_logits, domain_labels)
@@ -248,18 +204,16 @@ def OrdinalDomainLoss(outputs, labels, grade_outputs=None, domain_logits=None, d
     
     return loss
 
-
 def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scaler=None, 
-                   lambda_consistency=0.3, lambda_domain=0.1, domain_adaptation=True):
+                   lambda_consistency=0.1, lambda_domain=0.05, domain_adaptation=True):
     model.train()
     running_loss = 0.0
     all_labels = []
     all_preds = []
     
-    # Gradually increase domain adaptation strength
     alpha = min(2.0, 0.1 * epoch) if domain_adaptation else 0.0
     
-    for i, (images, labels , domain_labels) in enumerate(dataloader):
+    for i, (images, labels, domain_labels) in enumerate(dataloader):
         images = images.to(device)
         labels = labels.to(device)
         domain_labels = domain_labels.to(device)
@@ -280,7 +234,7 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
             
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
-            clip_grad_norm_(model.parameters(), max_norm=1.0)
+            grad_norm = clip_grad_norm_(model.parameters(), max_norm=1.0)
             scaler.step(optimizer)
             scaler.update()
         else:
@@ -293,9 +247,8 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
                 lambda_consistency=lambda_consistency,
                 lambda_domain=lambda_domain
             )
-            
             loss.backward()
-            clip_grad_norm_(model.parameters(), max_norm=1.0)
+            grad_norm = clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
         
         running_loss += loss.item()
@@ -306,10 +259,11 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
         
         if i % 10 == 0:
             current_lr = optimizer.param_groups[0]['lr']
-            logging.info(f"Epoch [{epoch+1}] Step [{i}/{len(dataloader)}] Loss: {loss.item():.4f} LR: {current_lr:.6f}")
+            logging.info(f"Epoch [{epoch+1}] Step [{i}/{len(dataloader)}] Loss: {loss.item():.4f} LR: {current_lr:.6f} GradNorm: {grad_norm:.4f}")
             wandb_run.log({
                 "train_loss": loss.item(), 
                 "learning_rate": current_lr,
+                "grad_norm": grad_norm,
                 "batch": i + epoch * len(dataloader),
                 "domain_alpha": alpha
             })
@@ -326,18 +280,15 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
             "train_f1": f1,
             "epoch": epoch + 1
         })
-        
         return avg_loss, acc, f1
     else:
         wandb_run.log({
             "train_epoch_loss": avg_loss,
             "epoch": epoch + 1
         })
-        
         return avg_loss, None, None
 
-
-def validate(model, dataloader, device, epoch, wandb_run, lambda_consistency=0.3):
+def validate(model, dataloader, device, epoch, wandb_run, lambda_consistency=0.1):
     model.eval()
     running_loss = 0.0
     all_labels = []
@@ -350,8 +301,6 @@ def validate(model, dataloader, device, epoch, wandb_run, lambda_consistency=0.3
             labels = labels.to(device)
             
             logits, grade_probs, _ = model(images)
-            
-            # Combined loss without domain adaptation during validation
             loss = OrdinalDomainLoss(
                 logits, labels, 
                 grade_outputs=grade_probs, 
@@ -359,8 +308,6 @@ def validate(model, dataloader, device, epoch, wandb_run, lambda_consistency=0.3
             )
             
             running_loss += loss.item()
-            
-            # For metrics calculation
             probs = torch.softmax(logits, dim=1)
             _, predicted = torch.max(logits.data, 1)
             all_labels.extend(labels.cpu().numpy())
@@ -371,36 +318,29 @@ def validate(model, dataloader, device, epoch, wandb_run, lambda_consistency=0.3
     acc = accuracy_score(all_labels, all_preds)
     f1 = f1_score(all_labels, all_preds, average='weighted')
     cm = confusion_matrix(all_labels, all_preds)
-    
     qwk = cohen_kappa_score(all_labels, all_preds, weights='quadratic')
 
     all_probs = np.array(all_probs)
     try:
         auc_scores = []
-        for i in range(5):  # 5 DR classes
+        for i in range(5):
             if i in np.unique(all_labels):
                 y_true_binary = (np.array(all_labels) == i).astype(int)
                 y_prob_binary = all_probs[:, i]
                 auc = roc_auc_score(y_true_binary, y_prob_binary)
                 auc_scores.append(auc)
-        
-        if auc_scores:
-            mean_auc = np.mean(auc_scores)
-        else:
-            mean_auc = 0.0
+        mean_auc = np.mean(auc_scores) if auc_scores else 0.0
     except Exception as e:
         logging.warning(f"Could not calculate AUC: {e}")
         mean_auc = 0.0
     
     sensitivity = []
     specificity = []
-    
     for i in range(len(cm)):
         tp = cm[i, i]
         fn = np.sum(cm[i, :]) - tp
         fp = np.sum(cm[:, i]) - tp
         tn = np.sum(cm) - tp - fp - fn
-        
         sensitivity.append(tp / (tp + fn) if (tp + fn) > 0 else 0)
         specificity.append(tn / (tn + fp) if (tn + fp) > 0 else 0)
     
@@ -422,8 +362,6 @@ def validate(model, dataloader, device, epoch, wandb_run, lambda_consistency=0.3
     })
     
     class_report = classification_report(all_labels, all_preds, output_dict=True)
-    
-    # Log class-wise metrics
     for i in range(len(sensitivity)):
         wandb_run.log({
             f"sensitivity_class{i}": sensitivity[i],
@@ -431,10 +369,8 @@ def validate(model, dataloader, device, epoch, wandb_run, lambda_consistency=0.3
             f"f1_class{i}": class_report[str(i)]['f1-score'] if str(i) in class_report else 0,
             "epoch": epoch + 1
         })
-        pass
     
     return avg_loss, acc, f1, avg_sensitivity, avg_specificity, qwk, mean_auc
-
 
 def save_checkpoint(state, checkpoint_dir, filename):
     filepath = os.path.join(checkpoint_dir, filename)
@@ -444,53 +380,45 @@ def save_checkpoint(state, checkpoint_dir, filename):
 def main():
     parser = argparse.ArgumentParser(description="Fine-tune MoCo model for Diabetic Retinopathy Classification")
     parser.add_argument("--checkpoint", type=str, default="model/new/chckpt/moco/new/best_checkpoint.pth", help="Path to MoCo checkpoint")
-    # parser.add_argument("--checkpoint", type=str, default="model/checkpoint/moco/best_checkpoint.pth", help="Path to MoCo checkpoint")
     parser.add_argument("--epochs", type=int, default=200, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
-    parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
+    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")  # Reduced from 1e-3
     parser.add_argument("--lr_min", type=float, default=1e-6, help="Minimum learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay for optimizer")
     parser.add_argument("--num_classes", type=int, default=5, help="Number of DR classes")
     parser.add_argument("--img_size", type=int, default=256, help="Image size")
     parser.add_argument("--use_amp", action="store_true", default=True, help="Use automatic mixed precision")
     parser.add_argument("--use_mixup", action="store_true", default=True, help="Use Mixup augmentation")
-    parser.add_argument("--lambda_consistency", type=float, default=0.3, help="Weight for grade consistency loss")
-    parser.add_argument("--lambda_domain", type=float, default=0.1, help="Weight for domain adaptation loss")
+    parser.add_argument("--lambda_consistency", type=float, default=0.1, help="Weight for grade consistency loss")  # Reduced from 0.3
+    parser.add_argument("--lambda_domain", type=float, default=0.05, help="Weight for domain adaptation loss")  # Reduced from 0.1
     parser.add_argument("--domain_adaptation", action="store_true", default=True, help="Use domain adaptation")
     args = parser.parse_args()
 
-    # Logging setup
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[
-            logging.FileHandler("enhanced_finetune.log"),
-            logging.StreamHandler()
-        ]
+        handlers=[logging.FileHandler("enhanced_finetune.log"), logging.StreamHandler()]
     )
 
     checkpoint_dir = "chckpt/finetune_nofreeze"
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Using device: {device}")
 
-    # Initialize wandb
     wandb_run = wandb.init(
         project="no_freeze_finetune",
         config=vars(args),
         name=f"no_freeze_finetune_{args.img_size}_{args.lr}"
     )
-    # **Initialize model with freeze_backbone=False**
+
     model = EnhancedDRClassifier(
         checkpoint_path=args.checkpoint,
         num_classes=args.num_classes,
-        freeze_backbone=False  # Backbone is trainable from the start
+        freeze_backbone=False
     ).to(device)
 
-    # Data augmentation and loading
     train_transform = data_aug.MoCoSingleAug(img_size=args.img_size)
     val_transform = data_aug.MoCoSingleAug(img_size=args.img_size)
 
@@ -512,13 +440,12 @@ def main():
         sampler=True
     ).get_loader()
 
-    # **Set up optimizer with learning rates for all parameters**
     optimizer = optim.AdamW([
         {'params': model.classifier.parameters(), 'lr': args.lr},
         {'params': model.grade_head.parameters(), 'lr': args.lr},
         {'params': model.domain_classifier.parameters(), 'lr': args.lr},
-        {'params': model.attention.parameters(), 'lr': args.lr * 1.5},  # Higher LR for attention
-        {'params': model.backbone.parameters(), 'lr': args.lr / 10}     # Smaller LR for pre-trained backbone
+        {'params': model.attention.parameters(), 'lr': args.lr},  # Reduced from args.lr * 1.5
+        {'params': model.backbone.parameters(), 'lr': args.lr / 10}
     ], weight_decay=args.weight_decay)
 
     steps_per_epoch = len(train_loader)
@@ -526,17 +453,16 @@ def main():
 
     scheduler = OneCycleLR(
         optimizer,
-        max_lr=[args.lr, args.lr, args.lr, args.lr * 1.5, args.lr / 10],  # Max LRs for each parameter group
+        max_lr=[args.lr, args.lr, args.lr, args.lr, args.lr / 10],  # Adjusted max_lr for attention
         total_steps=total_steps,
-        pct_start=0.1,  # Warmup for 10% of training
-        div_factor=10,  # Initial LR = max_lr / div_factor
-        final_div_factor=1000,  # Final LR = max_lr / (div_factor * final_div_factor)
+        pct_start=0.1,
+        div_factor=10,
+        final_div_factor=1000,
         anneal_strategy='cos'
     )
 
     scaler = GradScaler() if args.use_amp else None
 
-    # Training loop variables
     best_val_metrics = {
         "loss": float('inf'),
         "accuracy": 0,
@@ -549,7 +475,6 @@ def main():
     patience_counter = 0
     best_metric = 0
 
-    # **Training loop without unfreezing logic**
     for epoch in range(args.epochs):
         logging.info(f"--- Epoch {epoch+1}/{args.epochs} ---")
         
@@ -568,7 +493,6 @@ def main():
         
         combined_metric = 0.3 * val_acc + 0.4 * val_sensitivity + 0.3 * val_specificity
         
-        # Save checkpoint
         checkpoint_state = {
             'epoch': epoch + 1,
             'model_state_dict': model.state_dict(),
@@ -585,7 +509,7 @@ def main():
             'config': vars(args)
         }
         
-        if (epoch + 1) % 5 == 0:  # Save every 5 epochs
+        if (epoch + 1) % 5 == 0:
             save_checkpoint(checkpoint_state, checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pth")
         
         metrics_improved = False
@@ -627,7 +551,6 @@ def main():
         else:
             patience_counter += 1
             
-        # Log best metrics
         wandb_run.log({
             "best_val_loss": best_val_metrics["loss"],
             "best_val_accuracy": best_val_metrics["accuracy"],
@@ -640,7 +563,6 @@ def main():
             "epoch": epoch + 1
         })
 
-    # Final logging
     logging.info("Training complete!")
     logging.info(f"Best validation loss: {best_val_metrics['loss']:.4f}")
     logging.info(f"Best validation accuracy: {best_val_metrics['accuracy']:.4f}")
@@ -649,8 +571,6 @@ def main():
     logging.info(f"Best validation specificity: {best_val_metrics['specificity']:.4f}")
     logging.info(f"Best validation QWK: {best_val_metrics['qwk']:.4f}")
     logging.info(f"Best validation AUC: {best_val_metrics['auc']:.4f}")
-    
-    # wandb_run.finish()
 
 if __name__ == "__main__":
     main()
