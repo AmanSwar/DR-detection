@@ -240,13 +240,13 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
         else:
             logits, grade_probs, domain_logits = model(images, alpha=alpha, update_prototypes=True, labels=labels)
             loss = OrdinalDomainLoss(
-                logits, labels, 
-                grade_probs=grade_probs, 
-                domain_logits=domain_logits, 
-                domain_labels=domain_labels,
-                lambda_consistency=lambda_consistency,
-                lambda_domain=lambda_domain
-            )
+                    logits, labels, 
+                    grade_outputs=grade_probs, 
+                    domain_logits=domain_logits, 
+                    domain_labels=domain_labels,
+                    lambda_consistency=lambda_consistency,
+                    lambda_domain=lambda_domain
+                )
             loss.backward()
             grad_norm = clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
@@ -387,7 +387,7 @@ def main():
     parser.add_argument("--weight_decay", type=float, default=5e-4, help="Weight decay for optimizer")
     parser.add_argument("--num_classes", type=int, default=5, help="Number of DR classes")
     parser.add_argument("--img_size", type=int, default=256, help="Image size")
-    parser.add_argument("--use_amp", action="store_true", default=True, help="Use automatic mixed precision")
+    parser.add_argument("--use_amp", action="store_true", default=False, help="Use automatic mixed precision")
     parser.add_argument("--use_mixup", action="store_true", default=False, help="Use Mixup augmentation")
     parser.add_argument("--lambda_consistency", type=float, default=0.1, help="Weight for grade consistency loss")  # Reduced from 0.3
     parser.add_argument("--lambda_domain", type=float, default=0.05, help="Weight for domain adaptation loss")  # Reduced from 0.1

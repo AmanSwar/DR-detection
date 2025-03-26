@@ -242,7 +242,7 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
             logits, grade_probs, domain_logits = model(images, alpha=alpha, update_prototypes=True, labels=labels)
             loss = OrdinalDomainLoss(
                 logits, labels, 
-                grade_probs=grade_probs, 
+                grade_outputs=grade_probs, 
                 domain_logits=domain_logits, 
                 domain_labels=domain_labels,
                 lambda_consistency=lambda_consistency,
