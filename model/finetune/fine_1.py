@@ -483,7 +483,6 @@ def main():
         config=vars(args),
         name=f"no_freeze_finetune_{args.img_size}_{args.lr}"
     )
-    wandb_run = None
     # **Initialize model with freeze_backbone=False**
     model = EnhancedDRClassifier(
         checkpoint_path=args.checkpoint,
