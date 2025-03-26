@@ -384,11 +384,11 @@ def main():
     parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")  # Reduced from 1e-3
     parser.add_argument("--lr_min", type=float, default=1e-6, help="Minimum learning rate")
-    parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay for optimizer")
+    parser.add_argument("--weight_decay", type=float, default=5e-4, help="Weight decay for optimizer")
     parser.add_argument("--num_classes", type=int, default=5, help="Number of DR classes")
     parser.add_argument("--img_size", type=int, default=256, help="Image size")
     parser.add_argument("--use_amp", action="store_true", default=True, help="Use automatic mixed precision")
-    parser.add_argument("--use_mixup", action="store_true", default=True, help="Use Mixup augmentation")
+    parser.add_argument("--use_mixup", action="store_true", default=False, help="Use Mixup augmentation")
     parser.add_argument("--lambda_consistency", type=float, default=0.1, help="Weight for grade consistency loss")  # Reduced from 0.3
     parser.add_argument("--lambda_domain", type=float, default=0.05, help="Weight for domain adaptation loss")  # Reduced from 0.1
     parser.add_argument("--domain_adaptation", action="store_true", default=True, help="Use domain adaptation")
@@ -401,7 +401,7 @@ def main():
         handlers=[logging.FileHandler("enhanced_finetune.log"), logging.StreamHandler()]
     )
 
-    checkpoint_dir = "chckpt/finetune_nofreeze"
+    checkpoint_dir = "chckpt/finetune_nofreeze/fine_2"
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -461,7 +461,8 @@ def main():
     #     final_div_factor=1000,
     #     anneal_strategy='cos'
     # )
-    scheduler = CosineAnnealingLR(optimizer, T_max=100, eta_min=args.lr_min)
+    # scheduler = CosineAnnealingLR(optimizer, T_max=100, eta_min=args.lr_min)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
 
     scaler = GradScaler() if args.use_amp else None
 
@@ -491,7 +492,7 @@ def main():
             lambda_consistency=args.lambda_consistency
         )
         
-        scheduler.step()
+        scheduler.step(val_loss)
         
         combined_metric = 0.3 * val_acc + 0.4 * val_sensitivity + 0.3 * val_specificity
         

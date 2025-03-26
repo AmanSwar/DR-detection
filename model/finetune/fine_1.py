@@ -143,6 +143,7 @@ class EnhancedDRClassifier(nn.Module):
         
     def forward(self, x, alpha=0.0, get_attention=False, update_prototypes=False, labels=None):
         features = self.backbone.forward_features(x)
+        features = F.normalize(features, dim=1)
         attended_features = self.attention(features)
         h = torch.mean(attended_features, dim=(2, 3))
         
@@ -211,7 +212,7 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
     all_labels = []
     all_preds = []
     
-    alpha = min(2.0, 0.1 * epoch) if domain_adaptation else 0.0
+    alpha = min(2.0, 0.05 * epoch) if domain_adaptation else 0.0
     
     for i, (images, labels, domain_labels) in enumerate(dataloader):
         images = images.to(device)
@@ -234,7 +235,7 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
             
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
-            grad_norm = clip_grad_norm_(model.parameters(), max_norm=1.0)
+            grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.5)
             scaler.step(optimizer)
             scaler.update()
         else:
@@ -381,16 +382,16 @@ def main():
     parser = argparse.ArgumentParser(description="Fine-tune MoCo model for Diabetic Retinopathy Classification")
     parser.add_argument("--checkpoint", type=str, default="model/new/chckpt/moco/new/best_checkpoint.pth", help="Path to MoCo checkpoint")
     parser.add_argument("--epochs", type=int, default=200, help="Number of training epochs")
-    parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")  # Reduced from 1e-3
+    parser.add_argument("--batch_size", type=int, default=128, help="Batch size")
+    parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate")  # Reduced from 1e-3
     parser.add_argument("--lr_min", type=float, default=1e-6, help="Minimum learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay for optimizer")
     parser.add_argument("--num_classes", type=int, default=5, help="Number of DR classes")
     parser.add_argument("--img_size", type=int, default=256, help="Image size")
-    parser.add_argument("--use_amp", action="store_true", default=True, help="Use automatic mixed precision")
+    parser.add_argument("--use_amp", action="store_true", default=False, help="Use automatic mixed precision")
     parser.add_argument("--use_mixup", action="store_true", default=True, help="Use Mixup augmentation")
-    parser.add_argument("--lambda_consistency", type=float, default=0.1, help="Weight for grade consistency loss")  # Reduced from 0.3
-    parser.add_argument("--lambda_domain", type=float, default=0.05, help="Weight for domain adaptation loss")  # Reduced from 0.1
+    parser.add_argument("--lambda_consistency", type=float, default=0.05, help="Weight for grade consistency loss")  # Reduced from 0.3
+    parser.add_argument("--lambda_domain", type=float, default=0.01, help="Weight for domain adaptation loss")  # Reduced from 0.1
     parser.add_argument("--domain_adaptation", action="store_true", default=True, help="Use domain adaptation")
     args = parser.parse_args()
 
@@ -401,7 +402,7 @@ def main():
         handlers=[logging.FileHandler("enhanced_finetune.log"), logging.StreamHandler()]
     )
 
-    checkpoint_dir = "chckpt/finetune_nofreeze"
+    checkpoint_dir = "chckpt/finetune_nofreeze/fine_1"
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -444,7 +445,7 @@ def main():
         {'params': model.classifier.parameters(), 'lr': args.lr},
         {'params': model.grade_head.parameters(), 'lr': args.lr},
         {'params': model.domain_classifier.parameters(), 'lr': args.lr},
-        {'params': model.attention.parameters(), 'lr': args.lr},  # Reduced from args.lr * 1.5
+        {'params': model.attention.parameters(), 'lr': args.lr},  
         {'params': model.backbone.parameters(), 'lr': args.lr / 10}
     ], weight_decay=args.weight_decay)
 
@@ -453,9 +454,9 @@ def main():
 
     scheduler = OneCycleLR(
         optimizer,
-        max_lr=[args.lr, args.lr, args.lr, args.lr, args.lr / 10],  # Adjusted max_lr for attention
+        max_lr= [1e-5, 1e-5, 1e-5, 1e-5, 1e-7],   #[args.lr, args.lr, args.lr, args.lr, args.lr / 10],  # Adjusted max_lr for attention
         total_steps=total_steps,
-        pct_start=0.1,
+        pct_start=0.2,
         div_factor=10,
         final_div_factor=1000,
         anneal_strategy='cos'
