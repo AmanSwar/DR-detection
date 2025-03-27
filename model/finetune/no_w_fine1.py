@@ -89,7 +89,7 @@ class GradeConsistencyHead(nn.Module):
         return logits, ordinal_thresholds
 
 class EnhancedDRClassifier(nn.Module):
-    def __init__(self, checkpoint_path, num_classes=5, freeze_backbone=True):
+    def __init__(self, num_classes=5, freeze_backbone=True):
         super(EnhancedDRClassifier, self).__init__()
         # checkpoint = torch.load(checkpoint_path, map_location='cpu')
         # moco_state_dict = checkpoint['model_state_dict']
@@ -382,7 +382,7 @@ def save_checkpoint(state, checkpoint_dir, filename):
 
 def main():
     parser = argparse.ArgumentParser(description="Fine-tune MoCo model for Diabetic Retinopathy Classification")
-    parser.add_argument("--checkpoint", type=str, default="model/new/chckpt/moco/new/best_checkpoint.pth", help="Path to MoCo checkpoint")
+    # parser.add_argument("--checkpoint", type=str, default="model/new/chckpt/moco/new/best_checkpoint.pth", help="Path to MoCo checkpoint")
     parser.add_argument("--epochs", type=int, default=200, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")  # Reduced from 1e-3
@@ -404,7 +404,7 @@ def main():
         handlers=[logging.FileHandler("enhanced_finetune.log"), logging.StreamHandler()]
     )
 
-    checkpoint_dir = "chckpt/finetune_nofreeze/fine_2"
+    checkpoint_dir = "chckpt/finetune_nofreeze/no_init_fine_1"
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
