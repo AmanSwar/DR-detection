@@ -627,8 +627,8 @@ def save_checkpoint(state, checkpoint_dir, filename="checkpoint.pth", is_best=Fa
 def main():
     parser = argparse.ArgumentParser(description="Fine-tune MoCo model for Diabetic Retinopathy Classification")
     # --- Paths and Data ---
-    parser.add_argument("--checkpoint", type=str, default="path/to/your/moco_best_checkpoint.pth", help="Path to MoCo pre-trained backbone checkpoint")
-    parser.add_argument("--output_dir", type=str, default="finetune_output", help="Directory to save checkpoints and logs")
+    parser.add_argument("--checkpoint", type=str, default="model/new/chckpt/moco/new/best_checkpoint.pth", help="Path to MoCo pre-trained backbone checkpoint")
+    parser.add_argument("--output_dir", type=str, default="chckpt/finetune_nofreeze/fine_3", help="Directory to save checkpoints and logs")
     parser.add_argument("--dataset_names", nargs='+', default=["eyepacs", "aptos", "ddr", "idrid", "messdr"], help="List of dataset names to use")
     parser.add_argument("--img_size", type=int, default=256, help="Image size for training and validation")
     # --- Training Hyperparameters ---
