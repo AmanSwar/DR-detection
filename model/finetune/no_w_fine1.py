@@ -417,7 +417,6 @@ def main():
     )
 
     model = EnhancedDRClassifier(
-        checkpoint_path=args.checkpoint,
         num_classes=args.num_classes,
         freeze_backbone=False
     ).to(device)
