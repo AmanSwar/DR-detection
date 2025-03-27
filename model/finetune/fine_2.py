@@ -169,7 +169,6 @@ class EnhancedDRClassifier(nn.Module):
     def unfreeze_backbone(self):
         for param in self.backbone.parameters():
             param.requires_grad = True
-
 def OrdinalDomainLoss(outputs, labels, grade_outputs=None, domain_logits=None, domain_labels=None, lambda_consistency=0.1, lambda_domain=0.05):
     main_criterion = nn.CrossEntropyLoss()
     main_loss = main_criterion(outputs, labels)
@@ -183,7 +182,6 @@ def OrdinalDomainLoss(outputs, labels, grade_outputs=None, domain_logits=None, d
         targets = torch.zeros_like(grade_logits)
         for i in range(batch_size):
             targets[i, :labels[i]+1] = 1.0
-            
         consistency_loss = F.binary_cross_entropy_with_logits(grade_logits, targets)
         
         if ordinal_thresholds is not None:
@@ -202,10 +200,14 @@ def OrdinalDomainLoss(outputs, labels, grade_outputs=None, domain_logits=None, d
         domain_loss = domain_criterion(domain_logits, domain_labels)
         loss += lambda_domain * domain_loss
     
+    # Log components for debugging
+    logging.debug(f"Main Loss: {main_loss.item():.4f}, Consistency Loss: {consistency_loss.item() if grade_outputs else 0:.4f}, Domain Loss: {domain_loss.item() if domain_logits else 0:.4f}")
     return loss
 
+
+
 def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scaler=None, 
-                   lambda_consistency=0.1, lambda_domain=0.05, domain_adaptation=True):
+                   lambda_consistency=0.1, lambda_domain=0.05, domain_adaptation=True, scheduler=None):
     model.train()
     running_loss = 0.0
     all_labels = []
@@ -231,10 +233,9 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
                     lambda_consistency=lambda_consistency,
                     lambda_domain=lambda_domain
                 )
-            
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
-            grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.5)
+            grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.1)
             scaler.step(optimizer)
             scaler.update()
         else:
@@ -250,6 +251,9 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
             loss.backward()
             grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.5)
             optimizer.step()
+        
+        if scheduler is not None:
+            scheduler.step()  # Step scheduler after each batch
         
         running_loss += loss.item()
         
@@ -273,7 +277,6 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
     if len(all_preds) > 0:
         acc = accuracy_score(all_labels, all_preds)
         f1 = f1_score(all_labels, all_preds, average='weighted')
-        
         wandb_run.log({
             "train_epoch_loss": avg_loss,
             "train_accuracy": acc,
@@ -440,38 +443,38 @@ def main():
         sampler=True
     ).get_loader()
 
-    # optimizer = optim.AdamW([
-    #     {'params': model.classifier.parameters(), 'lr': args.lr},
-    #     {'params': model.grade_head.parameters(), 'lr': args.lr},
-    #     {'params': model.domain_classifier.parameters(), 'lr': args.lr},
-    #     {'params': model.attention.parameters(), 'lr': args.lr},  # Reduced from args.lr * 1.5
-    #     {'params': model.backbone.parameters(), 'lr': args.lr / 10}
-    # ], weight_decay=args.weight_decay)
+    optimizer = optim.AdamW([
+        {'params': model.classifier.parameters(), 'lr': args.lr},
+        {'params': model.grade_head.parameters(), 'lr': args.lr},
+        {'params': model.domain_classifier.parameters(), 'lr': args.lr},
+        {'params': model.attention.parameters(), 'lr': args.lr},  # Reduced from args.lr * 1.5
+        {'params': model.backbone.parameters(), 'lr': args.lr / 10}
+    ], weight_decay=args.weight_decay)
 
-    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    # optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     steps_per_epoch = len(train_loader)
     total_steps = steps_per_epoch * args.epochs
 
-    # scheduler = OneCycleLR(
-    #     optimizer,
-    #     max_lr=[args.lr, args.lr, args.lr, args.lr, args.lr / 10],  # Adjusted max_lr for attention
-    #     total_steps=total_steps,
-    #     pct_start=0.1,
-    #     div_factor=10,
-    #     final_div_factor=1000,
-    #     anneal_strategy='cos'
-    # )
-    # scheduler = CosineAnnealingLR(optimizer, T_max=100, eta_min=args.lr_min)
-    # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
     scheduler = OneCycleLR(
         optimizer,
-        max_lr=args.lr,
+        max_lr=[args.lr, args.lr, args.lr, args.lr, args.lr / 10],  # Adjusted max_lr for attention
         total_steps=total_steps,
-        pct_start=0.1,  # 10% warmup
-        div_factor=10,  # Initial LR = max_lr / 10
-        final_div_factor=1000,  # End LR = max_lr / 1000
+        pct_start=0.1,
+        div_factor=10,
+        final_div_factor=1000,
         anneal_strategy='cos'
     )
+    # scheduler = CosineAnnealingLR(optimizer, T_max=100, eta_min=args.lr_min)
+    # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
+    # scheduler = OneCycleLR(
+    #     optimizer,
+    #     max_lr=args.lr,
+    #     total_steps=total_steps,
+    #     pct_start=0.1,  # 10% warmup
+    #     div_factor=10,  # Initial LR = max_lr / 10
+    #     final_div_factor=1000,  # End LR = max_lr / 1000
+    #     anneal_strategy='cos'
+    # )
 
     scaler = GradScaler() if args.use_amp else None
 
@@ -501,7 +504,6 @@ def main():
             lambda_consistency=args.lambda_consistency
         )
         
-        scheduler.step()
         
         combined_metric = 0.3 * val_acc + 0.4 * val_sensitivity + 0.3 * val_specificity
         
