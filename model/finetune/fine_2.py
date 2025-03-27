@@ -384,7 +384,7 @@ def main():
     parser = argparse.ArgumentParser(description="Fine-tune MoCo model for Diabetic Retinopathy Classification")
     parser.add_argument("--checkpoint", type=str, default="model/new/chckpt/moco/new/best_checkpoint.pth", help="Path to MoCo checkpoint")
     parser.add_argument("--epochs", type=int, default=200, help="Number of training epochs")
-    parser.add_argument("--batch_size", type=int, default=128, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate")  # Reduced from 1e-3
     parser.add_argument("--lr_min", type=float, default=1e-6, help="Minimum learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-3, help="Weight decay for optimizer")
