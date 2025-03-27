@@ -137,7 +137,7 @@ class EnhancedDRClassifier(nn.Module):
                     nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
                     if m.bias is not None:
                         nn.init.constant_(m.bias, 0)
-                elif isinstance(m, nn.BatchNorm1d):
+                elif isinstance(m, nn.BatchNorm1d): 
                     nn.init.constant_(m.weight, 1)
                     nn.init.constant_(m.bias, 0)
         
@@ -234,7 +234,7 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
             
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
-            grad_norm = clip_grad_norm_(model.parameters(), max_norm=1.0)
+            grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.5)
             scaler.step(optimizer)
             scaler.update()
         else:
@@ -248,7 +248,7 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
                     lambda_domain=lambda_domain
                 )
             loss.backward()
-            grad_norm = clip_grad_norm_(model.parameters(), max_norm=1.0)
+            grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.5)
             optimizer.step()
         
         running_loss += loss.item()
@@ -382,9 +382,9 @@ def main():
     parser.add_argument("--checkpoint", type=str, default="model/new/chckpt/moco/new/best_checkpoint.pth", help="Path to MoCo checkpoint")
     parser.add_argument("--epochs", type=int, default=200, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=128, help="Batch size")
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")  # Reduced from 1e-3
+    parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate")  # Reduced from 1e-3
     parser.add_argument("--lr_min", type=float, default=1e-6, help="Minimum learning rate")
-    parser.add_argument("--weight_decay", type=float, default=5e-4, help="Weight decay for optimizer")
+    parser.add_argument("--weight_decay", type=float, default=1e-3, help="Weight decay for optimizer")
     parser.add_argument("--num_classes", type=int, default=5, help="Number of DR classes")
     parser.add_argument("--img_size", type=int, default=256, help="Image size")
     parser.add_argument("--use_amp", action="store_true", default=False, help="Use automatic mixed precision")
@@ -462,7 +462,16 @@ def main():
     #     anneal_strategy='cos'
     # )
     # scheduler = CosineAnnealingLR(optimizer, T_max=100, eta_min=args.lr_min)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
+    # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
+    scheduler = OneCycleLR(
+        optimizer,
+        max_lr=args.lr,
+        total_steps=total_steps,
+        pct_start=0.1,  # 10% warmup
+        div_factor=10,  # Initial LR = max_lr / 10
+        final_div_factor=1000,  # End LR = max_lr / 1000
+        anneal_strategy='cos'
+    )
 
     scaler = GradScaler() if args.use_amp else None
 
@@ -492,7 +501,7 @@ def main():
             lambda_consistency=args.lambda_consistency
         )
         
-        scheduler.step(val_loss)
+        scheduler.step()
         
         combined_metric = 0.3 * val_acc + 0.4 * val_sensitivity + 0.3 * val_specificity
         
