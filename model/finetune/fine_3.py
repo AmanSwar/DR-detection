@@ -605,7 +605,6 @@ def save_checkpoint(state, checkpoint_dir, filename="checkpoint.pth", is_best=Fa
 def main():
     parser = argparse.ArgumentParser(description="Fine-tune MoCo model for Diabetic Retinopathy Classification")
     # Existing arguments...
-    parser.add_argument("--checkpoint", type=str, default="model/new/chckpt/moco/new/best_checkpoint.pth", help="Path to MoCo pre-trained backbone checkpoint")
     parser.add_argument("--output_dir", type=str, default="chckpt/finetune_nofreeze/fine_3", help="Directory to save checkpoints and logs")
     parser.add_argument("--dataset_names", nargs='+', default=["eyepacs", "aptos", "ddr", "idrid", "messdr"], help="List of dataset names to use")
     parser.add_argument("--img_size", type=int, default=256, help="Image size for training and validation")
@@ -661,7 +660,6 @@ def main():
 
     # --- Model Initialization ---
     model = EnhancedDRClassifier(
-        checkpoint_path=args.checkpoint,
         num_classes=args.num_classes,
         freeze_backbone=args.freeze_epochs > 0,
         dropout_rate=args.dropout_rate
@@ -730,15 +728,14 @@ def main():
 
     # --- Resume from Checkpoint ---
     start_epoch = 0
-    if args.resume:
-        logging.info(f"Resuming from checkpoint: {args.resume}")
-        checkpoint = torch.load(args.resume, map_location=device)
-        model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        if 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict'] is not None:
-            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        start_epoch = checkpoint['epoch']
-        logging.info(f"Resuming training from epoch {start_epoch}")
+    logging.info(f"Resuming from checkpoint: {args.resume}")
+    checkpoint = torch.load(args.resume, map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    if 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict'] is not None:
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+    start_epoch = checkpoint['epoch']
+    logging.info(f"Resuming training from epoch {start_epoch}")
 
     # --- Training Loop ---
     best_val_metrics = {
