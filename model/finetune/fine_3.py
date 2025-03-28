@@ -730,9 +730,10 @@ def main():
 
     print("\n")
     print("loading checkpoint...")
+    resume_chkpt = "chckpt/finetune_nofreeze/fine_3/best_loss_checkpoint.pth"
     start_epoch = 0
-    logging.info(f"Resuming from checkpoint: {args.resume}")
-    checkpoint = torch.load(args.resume, map_location=device)
+    logging.info(f"Resuming from checkpoint: {resume_chkpt}")
+    checkpoint = torch.load(resume_chkpt, map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     if 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict'] is not None:
