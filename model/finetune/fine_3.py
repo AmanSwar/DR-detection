@@ -110,7 +110,7 @@ class GradeConsistencyHead(nn.Module):
         return logits, ordinal_thresholds
 
 class EnhancedDRClassifier(nn.Module):
-    def __init__(self, checkpoint_path, num_classes=5, freeze_backbone=True, dropout_rate=0.5):
+    def __init__(self,  num_classes=5, freeze_backbone=True, dropout_rate=0.5):
         super(EnhancedDRClassifier, self).__init__()
         
         # --- Load MoCo Backbone ---
@@ -626,7 +626,7 @@ def main():
     parser.add_argument("--wandb_run_name", type=str, default=None, help="WandB run name")
 
     # New argument for resuming
-    parser.add_argument("--resume", type=str, default=None, help="chckpt/finetune_nofreeze/fine_3/final_checkpoint.pth")
+    parser.add_argument("--resume", type=str, default=None, help="chckpt/finetune_nofreeze/fine_3/best_loss_checkpoint.pth")
 
     args = parser.parse_args()
 
@@ -727,6 +727,9 @@ def main():
         logging.info("Using Automatic Mixed Precision (AMP).")
 
     # --- Resume from Checkpoint ---
+
+    print("\n")
+    print("loading checkpoint...")
     start_epoch = 0
     logging.info(f"Resuming from checkpoint: {args.resume}")
     checkpoint = torch.load(args.resume, map_location=device)
@@ -735,8 +738,9 @@ def main():
     if 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict'] is not None:
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     start_epoch = checkpoint['epoch']
-    logging.info(f"Resuming training from epoch {start_epoch}")
 
+    logging.info(f"Resuming training from epoch {start_epoch}")
+    print("\n")
     # --- Training Loop ---
     best_val_metrics = {
         "loss": float('inf'), "accuracy": 0, "f1": 0, "sensitivity": 0,
