@@ -114,42 +114,37 @@ class EnhancedDRClassifier(nn.Module):
         super(EnhancedDRClassifier, self).__init__()
         
         # --- Load MoCo Backbone ---
-        try:
-            checkpoint = torch.load(checkpoint_path, map_location='cpu')
-            moco_state_dict = checkpoint['model_state_dict']
-            config = checkpoint['config']
-            base_model_name = config.get('base_model', 'resnet50') # Default if not found
-            logging.info(f"Loading backbone: {base_model_name} from MoCo checkpoint.")
-            self.backbone = timm.create_model(base_model_name, pretrained=False, num_classes=0) # num_classes=0 removes classifier head
-        except FileNotFoundError:
-            logging.error(f"MoCo checkpoint not found at {checkpoint_path}. Exiting.")
-            raise
-        except KeyError as e:
-             logging.error(f"Key error loading checkpoint: {e}. Check checkpoint structure.")
-             raise
+        # try:
+        #     checkpoint = torch.load(checkpoint_path, map_location='cpu')
+        #     moco_state_dict = checkpoint['model_state_dict']
+        #     config = checkpoint['config']
+        #     base_model_name = config.get('base_model') # Default if not found
+        #     logging.info(f"Loading backbone: {base_model_name} from MoCo checkpoint.")
+        #     self.backbone = timm.create_model(base_model_name, pretrained=False, num_classes=0) # num_classes=0 removes classifier head
+        # except FileNotFoundError:
+        #     logging.error(f"MoCo checkpoint not found at {checkpoint_path}. Exiting.")
+        #     raise
+        # except KeyError as e:
+        #      logging.error(f"Key error loading checkpoint: {e}. Check checkpoint structure.")
+        #      raise
 
-        # Extract state dict for the query encoder
-        backbone_state_dict = {}
-        for k, v in moco_state_dict.items():
-            if k.startswith('query_encoder.'):
-                 # Remove the 'query_encoder.' prefix
-                new_k = k.replace('query_encoder.', '', 1)
-                backbone_state_dict[new_k] = v
-            # Handle potential older checkpoints without 'query_encoder.' prefix
-            elif not (k.startswith('key_encoder.') or k.startswith('queue') or k.startswith('queue_ptr')):
-                 # Assume it belongs to the backbone if not key encoder or queue
-                 backbone_state_dict[k] = v
-
-
-        # Load state dict (handle potential mismatches)
-        msg = self.backbone.load_state_dict(backbone_state_dict, strict=False)
-        logging.info(f"Backbone loading message: {msg}")
-        if msg.missing_keys:
-            logging.warning(f"Missing keys when loading backbone: {msg.missing_keys}")
-        if msg.unexpected_keys:
-            logging.warning(f"Unexpected keys when loading backbone: {msg.unexpected_keys}")
+        # # Extract state dict for the query encoder
+        # backbone_state_dict = {}
+        # for k, v in moco_state_dict.items():
+        #     if k.startswith('query_encoder.'):
+        #          # Remove the 'query_encoder.' prefix
+        #         new_k = k.replace('query_encoder.', '', 1)
+        #         backbone_state_dict[new_k] = v
+        #     # Handle potential older checkpoints without 'query_encoder.' prefix
+        #     elif not (k.startswith('key_encoder.') or k.startswith('queue') or k.startswith('queue_ptr')):
+        #          # Assume it belongs to the backbone if not key encoder or queue
+        #          backbone_state_dict[k] = v
 
 
+        # # Load state dict (handle potential mismatches)
+        # msg = self.backbone.load_state_dict(backbone_state_dict, strict=False)
+       
+        self.backbone = timm.create_model("convnext_small", pretrained=False, num_classes=0)
         # --- Freeze Backbone ---
         self.freeze_backbone = freeze_backbone
         if self.freeze_backbone:
@@ -177,7 +172,6 @@ class EnhancedDRClassifier(nn.Module):
             nn.Linear(512, num_classes)
         )
 
-        # --- Auxiliary Heads ---
         self.grade_head = GradeConsistencyHead(self.feature_dim, num_grades=num_classes, dropout_rate=dropout_rate - 0.1) # Slightly less dropout maybe
         self.domain_classifier = nn.Sequential(
             nn.Linear(self.feature_dim, 256),
