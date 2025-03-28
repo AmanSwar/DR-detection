@@ -3,13 +3,13 @@ import logging
 import argparse
 import numpy as np
 import random
-import time  # For potential timestamping
+import time
 
 from sklearn.metrics import (
     accuracy_score, f1_score, confusion_matrix,
     classification_report, roc_auc_score, cohen_kappa_score
 )
-from torchvision import transforms # Added for validation transform
+from torchvision import transforms
 
 import torch
 import torch.nn as nn
@@ -17,7 +17,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.cuda.amp import GradScaler, autocast
-from torch.optim.lr_scheduler import OneCycleLR # , CosineAnnealingLR, ReduceLROnPlateau
+from torch.optim.lr_scheduler import OneCycleLR
 from torch.nn.utils import clip_grad_norm_
 
 import timm
@@ -31,11 +31,8 @@ np.random.seed(SEED)
 random.seed(SEED)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
-    # Might make things non-deterministic, but can improve performance
-    # torch.backends.cudnn.benchmark = True
-    # Use deterministic algorithms where possible
     torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False # Disable benchmark for full determinism
+    torch.backends.cudnn.benchmark = False
 
 # --- Model Components ---
 
@@ -344,43 +341,36 @@ def OrdinalDomainLoss(outputs, labels, grade_outputs=None, domain_logits=None, d
 
 
 # --- Training & Validation Loops ---
-
 def train_one_epoch(model, dataloader, optimizer, device, epoch, num_epochs, wandb_run, scaler=None,
                     lambda_consistency=0.1, lambda_domain=0.05, ordinal_weight=0.3,
-                    domain_adaptation=True, max_grad_norm=1.0, num_classes=5):
+                    domain_adaptation=True, max_grad_norm=1.0, num_classes=5, scheduler=None):
     model.train()
     running_loss = 0.0
     all_labels = []
     all_preds = []
     total_steps = len(dataloader)
 
-    # Calculate DANN alpha (gradient reversal multiplier) based on epoch progress
-    # Common schedule: smoothly increase alpha from 0 to 1
     p = float(epoch) / num_epochs
     alpha = 2. / (1. + np.exp(-10. * p)) - 1 if domain_adaptation else 0.0
-    # Alternative linear schedule: alpha = min(1.0, 2.0 * p) if domain_adaptation else 0.0
 
     start_time = time.time()
 
     for i, batch_data in enumerate(dataloader):
-        # Adjust based on your specific dataloader structure
         if len(batch_data) == 3:
             images, labels, domain_labels = batch_data
-        else: # Assuming validation might not have domain labels
+        else:
             images, labels = batch_data
-            domain_labels = None # Or handle appropriately if domain loss is still calculated
+            domain_labels = None
 
         images = images.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
         if domain_labels is not None:
-             domain_labels = domain_labels.to(device, non_blocking=True)
+            domain_labels = domain_labels.to(device, non_blocking=True)
 
+        optimizer.zero_grad(set_to_none=True)
 
-        optimizer.zero_grad(set_to_none=True) # More memory efficient
-
-        if scaler is not None: # Using AMP
+        if scaler is not None:
             with autocast():
-                # Pass alpha for gradient reversal, enable prototype update
                 logits, grade_outputs, domain_logits = model(images, alpha=alpha, update_prototypes=True, labels=labels)
                 loss = OrdinalDomainLoss(
                     logits, labels,
@@ -392,14 +382,12 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, num_epochs, wan
                     ordinal_weight=ordinal_weight,
                     num_classes=num_classes
                 )
-
-            # Scale loss, backward pass, unscale gradients, clip gradients, optimizer step
             scaler.scale(loss).backward()
-            scaler.unscale_(optimizer) # Unscale before clipping
+            scaler.unscale_(optimizer)
             grad_norm = clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
             scaler.step(optimizer)
             scaler.update()
-        else: # Not using AMP
+        else:
             logits, grade_outputs, domain_logits = model(images, alpha=alpha, update_prototypes=True, labels=labels)
             loss = OrdinalDomainLoss(
                 logits, labels,
@@ -415,20 +403,20 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, num_epochs, wan
             grad_norm = clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
             optimizer.step()
 
-        running_loss += loss.item()
+        # Step the scheduler after each batch for OneCycleLR
+        if scheduler is not None:
+            scheduler.step()
 
-        # --- Track predictions and labels for epoch metrics ---
+        running_loss += loss.item()
         _, predicted = torch.max(logits.data, 1)
         all_labels.extend(labels.cpu().numpy())
         all_preds.extend(predicted.cpu().numpy())
 
-        # --- Logging ---
-        if (i + 1) % 20 == 0 or i == total_steps - 1: # Log every 20 steps and at the end
-            current_lr = optimizer.param_groups[0]['lr'] # Get LR from first param group
+        if (i + 1) % 20 == 0 or i == total_steps - 1:
+            current_lr = optimizer.param_groups[0]['lr']
             batch_time = time.time() - start_time
             eta_seconds = batch_time / (i + 1) * (total_steps - (i + 1))
             eta_str = time.strftime("%H:%M:%S", time.gmtime(eta_seconds))
-
             logging.info(
                 f"Epoch [{epoch+1}/{num_epochs}] Step [{i+1}/{total_steps}] Loss: {loss.item():.4f} | "
                 f"LR: {current_lr:.6f} | GradNorm: {grad_norm:.4f} | ETA: {eta_str}"
@@ -437,21 +425,18 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, num_epochs, wan
                 wandb_run.log({
                     "train/batch_loss": loss.item(),
                     "train/learning_rate": current_lr,
-                    "train/grad_norm_clipped": grad_norm, # Name clarifies it's post-clipping
+                    "train/grad_norm_clipped": grad_norm,
                     "train/domain_alpha": alpha,
-                    "step": i + epoch * total_steps # Global step
+                    "step": i + epoch * total_steps
                 })
-            start_time = time.time() # Reset timer for next batch group
+            start_time = time.time()
 
-
-    # --- Epoch Metrics ---
     avg_loss = running_loss / total_steps
     acc = accuracy_score(all_labels, all_preds)
-    f1 = f1_score(all_labels, all_preds, average='weighted') # Use weighted F1 for imbalance
+    f1 = f1_score(all_labels, all_preds, average='weighted')
     qwk = cohen_kappa_score(all_labels, all_preds, weights='quadratic')
 
     logging.info(f"Epoch [{epoch+1}/{num_epochs}] Train Summary - Avg Loss: {avg_loss:.4f}, Acc: {acc:.4f}, F1: {f1:.4f}, QWK: {qwk:.4f}")
-
     if wandb_run:
         wandb_run.log({
             "train/epoch_loss": avg_loss,
@@ -461,7 +446,7 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, num_epochs, wan
             "epoch": epoch + 1
         })
 
-    return avg_loss, acc, f1, qwk # Return QWK as well
+    return avg_loss, acc, f1, qwk
 
 
 def validate(model, dataloader, device, epoch, num_epochs, wandb_run,
@@ -623,45 +608,38 @@ def save_checkpoint(state, checkpoint_dir, filename="checkpoint.pth", is_best=Fa
 
 
 # --- Main Function ---
-
 def main():
     parser = argparse.ArgumentParser(description="Fine-tune MoCo model for Diabetic Retinopathy Classification")
-    # --- Paths and Data ---
+    # Existing arguments...
     parser.add_argument("--checkpoint", type=str, default="model/new/chckpt/moco/new/best_checkpoint.pth", help="Path to MoCo pre-trained backbone checkpoint")
     parser.add_argument("--output_dir", type=str, default="chckpt/finetune_nofreeze/fine_3", help="Directory to save checkpoints and logs")
     parser.add_argument("--dataset_names", nargs='+', default=["eyepacs", "aptos", "ddr", "idrid", "messdr"], help="List of dataset names to use")
     parser.add_argument("--img_size", type=int, default=256, help="Image size for training and validation")
-    # --- Training Hyperparameters ---
     parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
-    parser.add_argument("--freeze_epochs", type=int, default=5, help="Number of epochs to train only the heads before unfreezing backbone (0 for no freezing)")
+    parser.add_argument("--freeze_epochs", type=int, default=5, help="Number of epochs to train only the heads before unfreezing backbone")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size per GPU")
-    parser.add_argument("--lr", type=float, default=5e-5, help="Peak Learning rate for OneCycleLR (for heads/new layers)")
+    parser.add_argument("--lr", type=float, default=5e-5, help="Peak Learning rate for OneCycleLR")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay for AdamW optimizer")
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Max norm for gradient clipping")
-    # --- Model and Loss ---
     parser.add_argument("--num_classes", type=int, default=5, help="Number of DR classes")
     parser.add_argument("--dropout_rate", type=float, default=0.5, help="Dropout rate for classifier heads")
     parser.add_argument("--lambda_consistency", type=float, default=0.1, help="Weight for grade consistency loss")
-    parser.add_argument("--ordinal_weight", type=float, default=0.3, help="Weight for ordinal threshold loss within consistency loss")
-    # --- Domain Adaptation ---
+    parser.add_argument("--ordinal_weight", type=float, default=0.3, help="Weight for ordinal threshold loss")
     parser.add_argument("--domain_adaptation", action="store_true", default=True, help="Use domain adaptation (DANN)")
-    parser.add_argument("--lambda_domain", type=float, default=0.05, help="Weight for domain adversarial loss (if domain_adaptation is True)")
-    # --- Augmentation and Technical ---
-    parser.add_argument("--use_amp", action=argparse.BooleanOptionalAction, default=True, help="Use automatic mixed precision (AMP)") # Use --use-amp or --no-use-amp
-    # parser.add_argument("--use_mixup", action="store_true", default=False, help="Use Mixup/Cutmix augmentation (Not implemented in this version)")
+    parser.add_argument("--lambda_domain", type=float, default=0.05, help="Weight for domain adversarial loss")
+    parser.add_argument("--use_amp", action=argparse.BooleanOptionalAction, default=True, help="Use automatic mixed precision")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of dataloader workers")
-    # --- W&B Logging ---
     parser.add_argument("--wandb_project", type=str, default="DR_FineTuning", help="WandB project name")
-    parser.add_argument("--wandb_run_name", type=str, default=None, help="WandB run name (generated if None)")
+    parser.add_argument("--wandb_run_name", type=str, default=None, help="WandB run name")
+
+    # New argument for resuming
+    parser.add_argument("--resume", type=str, default=None, help="chckpt/finetune_nofreeze/fine_3/final_checkpoint.pth")
 
     args = parser.parse_args()
 
     # --- Setup Output Directory and Logging ---
-    # Add timestamp or unique identifier to output directory if needed
-    # output_dir = os.path.join(args.output_dir, f"run_{time.strftime('%Y%m%d-%H%M%S')}")
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
-
     log_file = os.path.join(output_dir, "finetune.log")
     logging.basicConfig(
         level=logging.INFO,
@@ -675,25 +653,13 @@ def main():
     # --- Device Setup ---
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Using device: {device}")
-    if device.type == 'cuda':
-        logging.info(f"CUDA Device Name: {torch.cuda.get_device_name(0)}")
-        logging.info(f"CUDA Capability: {torch.cuda.get_device_capability(0)}")
 
     # --- WandB Setup ---
-    if args.wandb_run_name is None:
-         # Generate a descriptive run name
-         run_name = f"ft_{args.img_size}_lr{args.lr}_bs{args.batch_size}_wd{args.weight_decay}"
-         if args.freeze_epochs > 0: run_name += f"_freeze{args.freeze_epochs}"
-         if args.domain_adaptation: run_name += "_da"
-    else:
-         run_name = args.wandb_run_name
-
+    run_name = args.wandb_run_name or f"ft_{args.img_size}_lr{args.lr}_bs{args.batch_size}_wd{args.weight_decay}" + \
+               (f"_freeze{args.freeze_epochs}" if args.freeze_epochs > 0 else "") + \
+               ("_da" if args.domain_adaptation else "")
     try:
-        wandb_run = wandb.init(
-            project=args.wandb_project,
-            config=vars(args),
-            name=run_name
-        )
+        wandb_run = wandb.init(project=args.wandb_project, config=vars(args), name=run_name)
         logging.info(f"WandB run initialized: {run_name}")
     except Exception as e:
         logging.warning(f"Could not initialize WandB: {e}. Proceeding without W&B logging.")
@@ -703,186 +669,142 @@ def main():
     model = EnhancedDRClassifier(
         checkpoint_path=args.checkpoint,
         num_classes=args.num_classes,
-        freeze_backbone=args.freeze_epochs > 0, # Start frozen if freeze_epochs > 0
+        freeze_backbone=args.freeze_epochs > 0,
         dropout_rate=args.dropout_rate
     ).to(device)
 
-    # --- Data Transformations ---
-    # Use MoCo augmentation for training, simpler for validation
-    train_transform = data_aug.MoCoSingleAug(img_size=args.img_size) # Use your existing MoCo aug
-    val_transform = transforms.Compose([ # Standard validation transforms
+    # --- Data Loaders ---
+    train_transform = data_aug.MoCoSingleAug(img_size=args.img_size)
+    val_transform = transforms.Compose([
         transforms.Resize((args.img_size, args.img_size)),
         transforms.ToTensor(),
-        # Use ImageNet stats or stats derived from your specific DR datasets if available
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
-    logging.info(f"Using Training Transform: {train_transform}")
-    logging.info(f"Using Validation Transform: {val_transform}")
-
-
-    # --- Data Loaders ---
-    logging.info(f"Loading datasets: {args.dataset_names}")
-    # Uses uniform sampling across specified datasets for training and validation
     train_loader = data_set.UniformTrainDataloader(
         dataset_names=args.dataset_names,
         transformation=train_transform,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
-        sampler=True # Ensures uniform sampling across datasets
+        sampler=True
     ).get_loader()
-
     val_loader = data_set.UniformValidDataloader(
         dataset_names=args.dataset_names,
         transformation=val_transform,
-        batch_size=args.batch_size, # Can often use larger batch size for validation
+        batch_size=args.batch_size,
         num_workers=args.num_workers,
-        sampler=True # Keep True if uniform validation sampling is desired, False for standard sequential
+        sampler=True
     ).get_loader()
     logging.info(f"Train batches: {len(train_loader)}, Validation batches: {len(val_loader)}")
 
     # --- Optimizer ---
-    # Setup potentially different LRs for backbone vs heads
     if args.freeze_epochs > 0:
-        logging.info(f"Optimizer setup: Training HEADS ONLY for first {args.freeze_epochs} epochs.")
-        # Optimize only the parameters that require gradients (heads and attention)
         optimizer = optim.AdamW(
             filter(lambda p: p.requires_grad, model.parameters()),
-            lr=args.lr, # Use the main LR for heads
+            lr=args.lr,
             weight_decay=args.weight_decay
         )
     else:
-        logging.info("Optimizer setup: Training FULL MODEL with differential LR.")
-        # Separate parameters for backbone and new layers
         backbone_params = model.backbone.parameters()
         head_params = [p for name, p in model.named_parameters() if not name.startswith('backbone.') and p.requires_grad]
-
         optimizer = optim.AdamW([
-            {'params': backbone_params, 'lr': args.lr / 10.0}, # Lower LR for pre-trained backbone
-            {'params': head_params, 'lr': args.lr}             # Higher LR for randomly initialized layers
+            {'params': backbone_params, 'lr': args.lr / 10.0},
+            {'params': head_params, 'lr': args.lr}
         ], weight_decay=args.weight_decay)
 
-    # --- Learning Rate Scheduler ---
+    # --- Scheduler ---
     steps_per_epoch = len(train_loader)
     total_steps = steps_per_epoch * args.epochs
-
     if args.freeze_epochs > 0:
-        # Scheduler for the head-only phase
-        logging.info(f"Scheduler setup: OneCycleLR for head training ({args.freeze_epochs} epochs)")
         scheduler = OneCycleLR(
             optimizer,
-            max_lr=args.lr, # Single max_lr as only heads are optimized
+            max_lr=args.lr,
             total_steps=steps_per_epoch * args.freeze_epochs,
             pct_start=0.1, div_factor=10, final_div_factor=1000, anneal_strategy='cos'
         )
     else:
-        # Scheduler for the full fine-tuning phase (adjust max_lr list for differential LR)
-        logging.info("Scheduler setup: OneCycleLR for full model training")
         scheduler = OneCycleLR(
             optimizer,
-            max_lr=[args.lr / 10.0, args.lr], # Match max_lr to param groups [backbone, heads]
+            max_lr=[args.lr / 10.0, args.lr],
             total_steps=total_steps,
             pct_start=0.1, div_factor=10, final_div_factor=1000, anneal_strategy='cos'
         )
 
-    # --- Automatic Mixed Precision (AMP) Scaler ---
+    # --- AMP Scaler ---
     scaler = GradScaler() if args.use_amp and device.type == 'cuda' else None
     if scaler:
         logging.info("Using Automatic Mixed Precision (AMP).")
 
+    # --- Resume from Checkpoint ---
+    start_epoch = 0
+    if args.resume:
+        logging.info(f"Resuming from checkpoint: {args.resume}")
+        checkpoint = torch.load(args.resume, map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        if 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict'] is not None:
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        start_epoch = checkpoint['epoch']
+        logging.info(f"Resuming training from epoch {start_epoch}")
 
     # --- Training Loop ---
     best_val_metrics = {
         "loss": float('inf'), "accuracy": 0, "f1": 0, "sensitivity": 0,
-        "specificity": 0, "qwk": -1.0, "auc": 0 # Initialize QWK appropriately
+        "specificity": 0, "qwk": -1.0, "auc": 0
     }
     patience_counter = 0
-    best_metric_combined = 0.0 # Based on Acc, Sens, Spec
-    PATIENCE_LIMIT = 20 # Example early stopping patience
+    best_metric_combined = 0.0
+    PATIENCE_LIMIT = 20
 
     logging.info("--- Starting Training Loop ---")
     start_training_time = time.time()
 
-    for epoch in range(args.epochs):
-
-        # --- Handle Unfreezing ---
+    for epoch in range(start_epoch, args.epochs):
         if args.freeze_epochs > 0 and epoch == args.freeze_epochs:
             logging.info(f"--- Unfreezing backbone at epoch {epoch+1} ---")
             model.unfreeze_backbone()
-
-            # Re-initialize optimizer for the whole model with differential LR
             backbone_params = model.backbone.parameters()
             head_params = [p for name, p in model.named_parameters() if not name.startswith('backbone.') and p.requires_grad]
             optimizer = optim.AdamW([
-                {'params': backbone_params, 'lr': args.lr / 10.0}, # Start backbone LR low again
+                {'params': backbone_params, 'lr': args.lr / 10.0},
                 {'params': head_params, 'lr': args.lr}
             ], weight_decay=args.weight_decay)
-            logging.info("Re-initialized optimizer for full model fine-tuning.")
-
-            # Re-initialize scheduler for the remaining epochs
             remaining_steps = steps_per_epoch * (args.epochs - args.freeze_epochs)
             scheduler = OneCycleLR(
                 optimizer,
-                max_lr=[args.lr / 10.0, args.lr], # Differential LR
+                max_lr=[args.lr / 10.0, args.lr],
                 total_steps=remaining_steps,
                 pct_start=0.1, div_factor=10, final_div_factor=1000, anneal_strategy='cos'
             )
-            logging.info("Re-initialized scheduler for remaining epochs.")
+            logging.info("Re-initialized optimizer and scheduler for full model fine-tuning.")
 
-
-        # --- Train for one epoch ---
-        epoch_start_time = time.time()
         train_loss, train_acc, train_f1, train_qwk = train_one_epoch(
             model, train_loader, optimizer, device, epoch, args.epochs, wandb_run,
             scaler=scaler, lambda_consistency=args.lambda_consistency,
             lambda_domain=args.lambda_domain, ordinal_weight=args.ordinal_weight,
             domain_adaptation=args.domain_adaptation, max_grad_norm=args.max_grad_norm,
-            num_classes=args.num_classes
+            num_classes=args.num_classes, scheduler=scheduler
         )
 
-        # --- Validate ---
         val_loss, val_acc, val_f1, val_sensitivity, val_specificity, val_qwk, val_auc = validate(
             model, val_loader, device, epoch, args.epochs, wandb_run,
             lambda_consistency=args.lambda_consistency, ordinal_weight=args.ordinal_weight,
             num_classes=args.num_classes
         )
-        epoch_duration = time.time() - epoch_start_time
-        logging.info(f"Epoch [{epoch+1}/{args.epochs}] Duration: {epoch_duration:.2f} seconds")
 
-
-        # --- Learning Rate Scheduler Step ---
-        # Step OneCycleLR after each batch, but other schedulers (like ReduceLROnPlateau) might step based on validation loss
-        # Based on the setup, OneCycleLR steps internally within train_one_epoch implicitly or needs explicit step here.
-        # If OneCycleLR is used, it should typically be stepped after each optimizer step.
-        # Let's assume train_one_epoch handles the LR logging, but we might need scheduler.step() here if not done per-batch.
-        # For OneCycleLR, step *should* happen after each batch/optimizer step. Let's assume it's handled correctly if LR logs look right.
-        # If using ReduceLROnPlateau: scheduler.step(val_loss)
-        # If using CosineAnnealingLR: scheduler.step()
-        # Since OneCycleLR takes total_steps, it's likely managed per optimizer step implicitly by some frameworks or needs explicit loop in train_one_epoch.
-        # Re-checking OneCycleLR docs: yes, it's typically stepped after optimizer.step(). Let's add it to train_one_epoch if not already there.
-        # For simplicity here, assuming LR updates happen and just logging. If LR isn't changing, add scheduler.step() in train_one_epoch after optimizer.step().
-        # Let's assume OneCycleLR needs step per epoch if not per batch
-        if not isinstance(scheduler, OneCycleLR): # OneCycleLR usually steps per batch
-             scheduler.step() # Step other schedulers per epoch
-
-
-        # --- Checkpoint Saving Logic ---
-        # Define the combined metric (adjust weights as needed)
+        # --- Checkpoint Saving ---
         combined_metric = 0.3 * val_acc + 0.4 * val_sensitivity + 0.3 * val_specificity
-
         checkpoint_state = {
             'epoch': epoch + 1,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict() if hasattr(scheduler, 'state_dict') else None,
-            'val_loss': val_loss, 'val_accuracy': val_acc, 'val_f1': val_f1, 'val_qwk': val_qwk, 'val_auc': val_auc, # Include key metrics
+            'scheduler_state_dict': scheduler.state_dict(),
+            'val_loss': val_loss, 'val_accuracy': val_acc, 'val_f1': val_f1, 'val_qwk': val_qwk, 'val_auc': val_auc,
             'config': vars(args)
         }
 
-        # Save checkpoint periodically
-        if (epoch + 1) % 10 == 0: # Save every 10 epochs
+        if (epoch + 1) % 10 == 0:
             save_checkpoint(checkpoint_state, output_dir, f"checkpoint_epoch_{epoch+1}.pth")
 
-        # --- Save Best Checkpoints based on different metrics ---
         is_best_loss = val_loss < best_val_metrics["loss"]
         is_best_qwk = val_qwk > best_val_metrics["qwk"]
         is_best_combined = combined_metric > best_metric_combined
@@ -890,28 +812,23 @@ def main():
         if is_best_loss:
             best_val_metrics["loss"] = val_loss
             save_checkpoint(checkpoint_state, output_dir, "best_loss_checkpoint.pth", is_best=True)
-
         if is_best_qwk:
             best_val_metrics["qwk"] = val_qwk
             save_checkpoint(checkpoint_state, output_dir, "best_qwk_checkpoint.pth", is_best=True)
-
         if is_best_combined:
-            logging.info(f"*** New best combined metric: {combined_metric:.4f} (previous: {best_metric_combined:.4f}) at epoch {epoch+1}")
+            logging.info(f"*** New best combined metric: {combined_metric:.4f} (previous: {best_metric_combined:.4f})")
             best_metric_combined = combined_metric
             save_checkpoint(checkpoint_state, output_dir, "best_clinical_checkpoint.pth", is_best=True)
-            patience_counter = 0 # Reset patience because performance improved
+            patience_counter = 0
         else:
             patience_counter += 1
-            logging.info(f"Combined metric did not improve. Patience: {patience_counter}/{PATIENCE_LIMIT}")
 
-        # Update overall bests for other metrics (for final logging)
         best_val_metrics["accuracy"] = max(best_val_metrics["accuracy"], val_acc)
         best_val_metrics["f1"] = max(best_val_metrics["f1"], val_f1)
         best_val_metrics["sensitivity"] = max(best_val_metrics["sensitivity"], val_sensitivity)
         best_val_metrics["specificity"] = max(best_val_metrics["specificity"], val_specificity)
         best_val_metrics["auc"] = max(best_val_metrics["auc"], val_auc)
 
-        # --- Log best metrics achieved so far to WandB ---
         if wandb_run:
             wandb_run.log({
                 "val/best_loss_so_far": best_val_metrics["loss"],
@@ -921,43 +838,23 @@ def main():
                 "epoch": epoch + 1
             })
 
-        # --- Early Stopping ---
-        if patience_counter >= PATIENCE_LIMIT:
-            logging.info(f"--- Early stopping triggered at epoch {epoch+1} ---")
-            break
-
     # --- End of Training ---
     total_training_time = time.time() - start_training_time
-    logging.info(f"--- Training Complete ---")
     logging.info(f"Total Training Time: {time.strftime('%H:%M:%S', time.gmtime(total_training_time))}")
-
     logging.info("--- Best Validation Metrics Achieved ---")
-    logging.info(f"Best Loss: {best_val_metrics['loss']:.4f}")
-    logging.info(f"Best Accuracy: {best_val_metrics['accuracy']:.4f}")
-    logging.info(f"Best F1 (Weighted): {best_val_metrics['f1']:.4f}")
-    logging.info(f"Best QWK: {best_val_metrics['qwk']:.4f}")
-    logging.info(f"Best Avg Sensitivity: {best_val_metrics['sensitivity']:.4f}")
-    logging.info(f"Best Avg Specificity: {best_val_metrics['specificity']:.4f}")
-    logging.info(f"Best AUC (Macro-OvR): {best_val_metrics['auc']:.4f}")
+    for metric, value in best_val_metrics.items():
+        logging.info(f"Best {metric.capitalize()}: {value:.4f}")
     logging.info(f"Best Combined Clinical Metric: {best_metric_combined:.4f}")
 
-    # Save final model state (optional)
     save_checkpoint(checkpoint_state, output_dir, "final_checkpoint.pth")
-
     if wandb_run:
-        # Log final best metrics to WandB summary
-        wandb_run.summary["best_val_loss"] = best_val_metrics['loss']
-        wandb_run.summary["best_val_accuracy"] = best_val_metrics['accuracy']
-        wandb_run.summary["best_val_f1_weighted"] = best_val_metrics['f1']
-        wandb_run.summary["best_val_qwk"] = best_val_metrics['qwk']
-        wandb_run.summary["best_val_avg_sensitivity"] = best_val_metrics['sensitivity']
-        wandb_run.summary["best_val_avg_specificity"] = best_val_metrics['specificity']
-        wandb_run.summary["best_val_auc_macro_ovr"] = best_val_metrics['auc']
+        wandb_run.summary.update({
+            f"best_val_{k}": v for k, v in best_val_metrics.items()
+        })
         wandb_run.summary["best_combined_clinical_metric"] = best_metric_combined
         wandb_run.summary["total_training_time_seconds"] = total_training_time
-
         wandb_run.finish()
-        logging.info("WandB run finished.")
+
 
 if __name__ == "__main__":
     main()
