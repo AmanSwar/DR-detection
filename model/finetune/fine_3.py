@@ -110,7 +110,7 @@ class GradeConsistencyHead(nn.Module):
         return logits, ordinal_thresholds
 
 class EnhancedDRClassifier(nn.Module):
-    def __init__(self,  num_classes=5, freeze_backbone=False, dropout_rate=0.5):
+    def __init__(self,  num_classes=5, dropout_rate=0.5):
         super(EnhancedDRClassifier, self).__init__()
         
         # --- Load MoCo Backbone ---
@@ -195,11 +195,8 @@ class EnhancedDRClassifier(nn.Module):
 
     def forward(self, x, alpha=0.0, get_attention=False, update_prototypes=False, labels=None):
         # --- Feature Extraction ---
-        if self.freeze_backbone:
-             with torch.no_grad(): # Ensure no gradients calculated for frozen backbone
-                 features = self.backbone.forward_features(x)
-        else:
-            features = self.backbone.forward_features(x) # Pass features directly from backbone
+        
+        features = self.backbone.forward_features(x) # Pass features directly from backbone
 
         # --- Attention ---
         attended_features = self.attention(features)
@@ -241,12 +238,7 @@ class EnhancedDRClassifier(nn.Module):
         else:
             return logits, grade_outputs, domain_logits
 
-    def unfreeze_backbone(self):
-        if self.freeze_backbone:
-            logging.info("Unfreezing backbone parameters.")
-            for param in self.backbone.parameters():
-                param.requires_grad = True
-            self.freeze_backbone = False # Update state
+    
 
 
 # --- Loss Function ---
@@ -652,7 +644,6 @@ def main():
     # --- Model Initialization ---
     model = EnhancedDRClassifier(
         num_classes=args.num_classes,
-        freeze_backbone=args.freeze_epochs > 0,
         dropout_rate=args.dropout_rate
     ).to(device)
 
@@ -741,7 +732,6 @@ def main():
     for epoch in range(start_epoch, args.epochs):
         if args.freeze_epochs > 0 and epoch == args.freeze_epochs:
             logging.info(f"--- Unfreezing backbone at epoch {epoch+1} ---")
-            model.unfreeze_backbone()
             backbone_params = model.backbone.parameters()
             head_params = [p for name, p in model.named_parameters() if not name.startswith('backbone.') and p.requires_grad]
             optimizer = optim.AdamW([
