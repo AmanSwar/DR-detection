@@ -201,7 +201,7 @@ def OrdinalDomainLoss(outputs, labels, grade_outputs=None, domain_logits=None, d
         loss += lambda_domain * domain_loss
     
     # Log components for debugging
-    logging.debug(f"Main Loss: {main_loss.item():.4f}, Consistency Loss: {consistency_loss.item() if grade_outputs else 0:.4f}, Domain Loss: {domain_loss.item() if domain_logits else 0:.4f}")
+    # logging.debug(f"Main Loss: {main_loss.item():.4f}, Consistency Loss: {consistency_loss.item() if grade_outputs else 0:.4f}, Domain Loss: {domain_loss.item() if domain_logits else 0:.4f}")
     return loss
 
 
