@@ -680,19 +680,12 @@ def main():
     logging.info(f"Train batches: {len(train_loader)}, Validation batches: {len(val_loader)}")
 
     # --- Optimizer ---
-    if args.freeze_epochs > 0:
-        optimizer = optim.AdamW(
-            filter(lambda p: p.requires_grad, model.parameters()),
-            lr=args.lr,
-            weight_decay=args.weight_decay
-        )
-    else:
-        backbone_params = model.backbone.parameters()
-        head_params = [p for name, p in model.named_parameters() if not name.startswith('backbone.') and p.requires_grad]
-        optimizer = optim.AdamW([
-            {'params': backbone_params, 'lr': args.lr / 10.0},
-            {'params': head_params, 'lr': args.lr}
-        ], weight_decay=args.weight_decay)
+    backbone_params = model.backbone.parameters()
+    head_params = [p for name, p in model.named_parameters() if not name.startswith('backbone.') and p.requires_grad]
+    optimizer = optim.AdamW([
+        {'params': backbone_params, 'lr': args.lr / 10.0},
+        {'params': head_params, 'lr': args.lr}
+    ], weight_decay=args.weight_decay)
 
     # --- Scheduler ---
     steps_per_epoch = len(train_loader)
