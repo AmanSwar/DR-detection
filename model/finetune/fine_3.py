@@ -110,7 +110,7 @@ class GradeConsistencyHead(nn.Module):
         return logits, ordinal_thresholds
 
 class EnhancedDRClassifier(nn.Module):
-    def __init__(self,  num_classes=5, freeze_backbone=True, dropout_rate=0.5):
+    def __init__(self,  num_classes=5, freeze_backbone=False, dropout_rate=0.5):
         super(EnhancedDRClassifier, self).__init__()
         
         # --- Load MoCo Backbone ---
@@ -733,7 +733,7 @@ def main():
     resume_chkpt = "chckpt/finetune_nofreeze/fine_3/best_loss_checkpoint.pth"
     start_epoch = 0
     logging.info(f"Resuming from checkpoint: {resume_chkpt}")
-    checkpoint = torch.load(resume_chkpt, map_location=device)
+    checkpoint = torch.load(resume_chkpt, map_location=device , weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     if 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict'] is not None:
