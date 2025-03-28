@@ -145,15 +145,6 @@ class EnhancedDRClassifier(nn.Module):
         # msg = self.backbone.load_state_dict(backbone_state_dict, strict=False)
        
         self.backbone = timm.create_model("convnext_small", pretrained=False, num_classes=0)
-        # --- Freeze Backbone ---
-        self.freeze_backbone = freeze_backbone
-        if self.freeze_backbone:
-            logging.info("Freezing backbone parameters.")
-            for param in self.backbone.parameters():
-                param.requires_grad = False
-        else:
-             logging.info("Backbone parameters are trainable.")
-
         self.feature_dim = self.backbone.num_features
         
         # --- Attention Module ---
