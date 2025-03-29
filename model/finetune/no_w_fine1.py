@@ -235,7 +235,7 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
                 )
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
-            grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.1)
+            grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.05)
             scaler.step(optimizer)
             scaler.update()
         else:
@@ -249,7 +249,7 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
                     lambda_domain=lambda_domain
                 )
             loss.backward()
-            grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.5)
+            grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.05)
             optimizer.step()
         
         if scheduler is not None:
@@ -304,12 +304,12 @@ def validate(model, dataloader, device, epoch, wandb_run, lambda_consistency=0.1
             labels = labels.to(device)
             
             logits, grade_probs, _ = model(images)
-            # loss = OrdinalDomainLoss(
-            #     logits, labels, 
-            #     grade_outputs=grade_probs, 
-            #     lambda_consistency=lambda_consistency
-            # )
-            loss = nn.CrossEntropyLoss()(logits, labels)
+            loss = OrdinalDomainLoss(
+                logits, labels, 
+                grade_outputs=grade_probs, 
+                lambda_consistency=lambda_consistency
+            )
+            # loss = nn.CrossEntropyLoss()(logits, labels)
             running_loss += loss.item()
             probs = torch.softmax(logits, dim=1)
             _, predicted = torch.max(logits.data, 1)
@@ -387,7 +387,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")  # Reduced from 1e-3
     parser.add_argument("--lr_min", type=float, default=1e-6, help="Minimum learning rate")
-    parser.add_argument("--weight_decay", type=float, default=1e-3, help="Weight decay for optimizer")
+    parser.add_argument("--weight_decay", type=float, default=1e-2, help="Weight decay for optimizer")
     parser.add_argument("--num_classes", type=int, default=5, help="Number of DR classes")
     parser.add_argument("--img_size", type=int, default=256, help="Image size")
     parser.add_argument("--use_amp", action="store_true", default=False, help="Use automatic mixed precision")
