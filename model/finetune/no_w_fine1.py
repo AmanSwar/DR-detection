@@ -385,9 +385,9 @@ def main():
     # parser.add_argument("--checkpoint", type=str, default="model/new/chckpt/moco/new/best_checkpoint.pth", help="Path to MoCo checkpoint")
     parser.add_argument("--epochs", type=int, default=200, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")  # Reduced from 1e-3
+    parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate")  # Reduced from 1e-3
     parser.add_argument("--lr_min", type=float, default=1e-6, help="Minimum learning rate")
-    parser.add_argument("--weight_decay", type=float, default=1e-2, help="Weight decay for optimizer")
+    parser.add_argument("--weight_decay", type=float, default=5e-2, help="Weight decay for optimizer")
     parser.add_argument("--num_classes", type=int, default=5, help="Number of DR classes")
     parser.add_argument("--img_size", type=int, default=256, help="Image size")
     parser.add_argument("--use_amp", action="store_true", default=False, help="Use automatic mixed precision")
@@ -404,7 +404,7 @@ def main():
         handlers=[logging.FileHandler("enhanced_finetune.log"), logging.StreamHandler()]
     )
 
-    checkpoint_dir = "chckpt/finetune_nofreeze/no_init_fine_1"
+    checkpoint_dir = "chckpt/finetune_nofreeze/no_init_fine_1/run_2"
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -471,7 +471,7 @@ def main():
         total_steps=total_steps,
         pct_start=0.1,  # 10% warmup
         div_factor=10,  # Initial LR = max_lr / 10
-        final_div_factor=1000,  # End LR = max_lr / 1000
+        final_div_factor=10000,  # End LR = max_lr / 1000
         anneal_strategy='cos'
     )
 
@@ -566,7 +566,7 @@ def main():
             patience_counter += 1
             
         wandb_run.log({
-            "best_val_loss": best_val_metrics["loss"],
+            "best_val_loss": best_val_metrics["loss"],              
             "best_val_accuracy": best_val_metrics["accuracy"],
             "best_val_f1": best_val_metrics["f1"],
             "best_val_sensitivity": best_val_metrics["sensitivity"],
