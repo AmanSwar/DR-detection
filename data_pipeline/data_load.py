@@ -378,6 +378,8 @@ class IdridGradingDataset(GradingDataset):
 
     def __init__(self, dataset_path="data/idrid"):
         super().__init__(dataset_path)
+        self._test_image = self._get_img_list("test")
+        self._test_label = self._get_labels("test")
 
     def _get_img_list(self, subset):
         grading_sub_path = os.path.join(self.dataset_path , "B. Disease Grading")
@@ -426,6 +428,9 @@ class IdridGradingDataset(GradingDataset):
                 labels_inorder.append(labels_dic[img.split('/')[-1].rstrip('.jpg')])
 
         return labels_inorder
+    
+    def get_test_set(self):
+        return self._test_image , self._test_label
     
 
 
@@ -492,13 +497,43 @@ class MessdrGradingDataset(GradingDataset):
 
         return label_inorder
     
+    def get_test_set(self):
+        return self._test_img , self._test_label
+    
 
 
 
 
+class SustechDataset():
+    def __init__(self):
+        self.image_path = "data/test/sustech/SUSTech-SYSU grading dataset/SUSTech-SYSU grading dataset"
+        self.labels_path = "data/test/sustech/Labels.csv"
+        self.image_list = []
+        self.labels_list = []
+
+        self._get_image()
+        self._get_labels()
+
+    def _get_image(self):
+        for img in os.listdir(self.image_path):
+            full_img_path = os.path.join(self.image_path , img)
+
+            self.image_list.append(full_img_path)
+
+    
+    def _get_labels(self):
+
+        labels_df = pd.read_csv(self.labels_path)
+        labels_dic = {img_name : label for img_name , label in zip(labels_df['Fundus_images'] , labels_df['DR_grade_International_Clinical_DR_Severity_Scale'])}
+
+        for img in tqdm(self.image_list):
+                self.labels_list.append(labels_dic[img.split('/')[-1]])
         
 
-        
+    def get_test_set(self):
+        return self.image_list , self.labels_list
+    
+
 
 
 
