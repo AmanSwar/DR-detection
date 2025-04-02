@@ -200,11 +200,11 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
         
         if i % 10 == 0:
             current_lr = optimizer.param_groups[0]['lr']
-            logging.info(f"Epoch [{epoch+1}] Step [{i}/{len(dataloader)}] Loss: {loss.item():.4f} LR: {current_lr:.6f} GradNorm: {grad_norm:.4f}")
+            logging.info(f"Epoch [{epoch+1}] Step [{i}/{len(dataloader)}] Loss: {loss.item():.4f} LR: {current_lr:.6f} ")
             wandb_run.log({
                 "train_loss": loss.item(), 
                 "learning_rate": current_lr,
-                "grad_norm": grad_norm,
+                
                 "batch": i + epoch * len(dataloader)
             })
     
