@@ -70,11 +70,11 @@ class GradeConsistencyHead(nn.Module):
             nn.Linear(feature_dim, 512),
             nn.BatchNorm1d(512),
             nn.GELU(),
-            nn.Dropout(0.4),
+            nn.Dropout(0.7),
             nn.Linear(512, 256),
             nn.BatchNorm1d(256),
             nn.GELU(),
-            nn.Dropout(0.4),
+            nn.Dropout(0.7),
             nn.Linear(256, num_grades)
         )
         self.ordinal_encoder = nn.Sequential(
@@ -110,11 +110,11 @@ class EnhancedDRClassifier(nn.Module):
             nn.Linear(self.feature_dim, 1024),
             nn.BatchNorm1d(1024),
             nn.GELU(),
-            nn.Dropout(0.5),
+            nn.Dropout(0.7),
             nn.Linear(1024, 512),
             nn.BatchNorm1d(512),
             nn.GELU(),
-            nn.Dropout(0.5),
+            nn.Dropout(0.7),
             nn.Linear(512, num_classes)
         )
         
@@ -235,7 +235,7 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
                 )
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
-            grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.05)
+            grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.01)
             scaler.step(optimizer)
             scaler.update()
         else:
@@ -249,7 +249,7 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
                     lambda_domain=lambda_domain
                 )
             loss.backward()
-            grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.05)
+            grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.01)
             optimizer.step()
         
         if scheduler is not None:
@@ -387,13 +387,13 @@ def main():
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate")  # Reduced from 1e-3
     parser.add_argument("--lr_min", type=float, default=1e-6, help="Minimum learning rate")
-    parser.add_argument("--weight_decay", type=float, default=5e-2, help="Weight decay for optimizer")
+    parser.add_argument("--weight_decay", type=float, default=1e-1, help="Weight decay for optimizer")
     parser.add_argument("--num_classes", type=int, default=5, help="Number of DR classes")
     parser.add_argument("--img_size", type=int, default=256, help="Image size")
     parser.add_argument("--use_amp", action="store_true", default=False, help="Use automatic mixed precision")
     parser.add_argument("--use_mixup", action="store_true", default=False, help="Use Mixup augmentation")
     parser.add_argument("--lambda_consistency", type=float, default=0.1, help="Weight for grade consistency loss")  # Reduced from 0.3
-    parser.add_argument("--lambda_domain", type=float, default=0.05, help="Weight for domain adaptation loss")  # Reduced from 0.1
+    parser.add_argument("--lambda_domain", type=float, default=0.02, help="Weight for domain adaptation loss")  # Reduced from 0.1
     parser.add_argument("--domain_adaptation", action="store_true", default=True, help="Use domain adaptation")
     args = parser.parse_args()
 
@@ -421,8 +421,8 @@ def main():
         freeze_backbone=False
     ).to(device)
 
-    train_transform = data_aug.MoCoSingleAug(img_size=args.img_size)
-    val_transform = data_aug.MoCoSingleAug(img_size=args.img_size)
+    train_transform = data_aug.MoCoSingleAug(img_size=args.img_size, is_training=True)
+    val_transform = data_aug.MoCoSingleAug(img_size=args.img_size, is_training=False)
 
     dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"]
     
@@ -454,26 +454,18 @@ def main():
     steps_per_epoch = len(train_loader)
     total_steps = steps_per_epoch * args.epochs
 
+    
+    scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.lr_min)
+    # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
     # scheduler = OneCycleLR(
     #     optimizer,
-    #     max_lr=[args.lr, args.lr, args.lr, args.lr, args.lr / 10],  # Adjusted max_lr for attention
+    #     max_lr=args.lr,
     #     total_steps=total_steps,
-    #     pct_start=0.1,
-    #     div_factor=10,
-    #     final_div_factor=1000,
+    #     pct_start=0.1,  # 10% warmup
+    #     div_factor=10,  # Initial LR = max_lr / 10
+    #     final_div_factor=10000,  # End LR = max_lr / 1000
     #     anneal_strategy='cos'
     # )
-    # scheduler = CosineAnnealingLR(optimizer, T_max=100, eta_min=args.lr_min)
-    # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
-    scheduler = OneCycleLR(
-        optimizer,
-        max_lr=args.lr,
-        total_steps=total_steps,
-        pct_start=0.1,  # 10% warmup
-        div_factor=10,  # Initial LR = max_lr / 10
-        final_div_factor=10000,  # End LR = max_lr / 1000
-        anneal_strategy='cos'
-    )
 
     scaler = GradScaler() if args.use_amp else None
 
