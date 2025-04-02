@@ -175,7 +175,7 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
                 )
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
-            grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.05)
+            # grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.01)
             scaler.step(optimizer)
             scaler.update()
         else:
@@ -186,7 +186,7 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
                 lambda_consistency=lambda_consistency
             )
             loss.backward()
-            grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.05)
+            # grad_norm = clip_grad_norm_(model.parameters(), max_norm=0.01)
             optimizer.step()
         
         if scheduler is not None:
