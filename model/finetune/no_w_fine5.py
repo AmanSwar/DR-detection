@@ -401,7 +401,7 @@ def main():
     # Define Data Augmentations (ensure MoCoSingleAug is appropriate for supervised fine-tuning)
     # Consider using standard ImageNet-style augmentations if MoCoSingleAug is specific to self-supervised pre-training
     train_transform = data_aug.MoCoSingleAug(img_size=args.img_size) # Verify this augmentation pipeline
-    val_transform = data_aug.MoCoSingleAug(img_size=args.img_size, is_train=False) # Assuming validation needs basic resize/normalize
+    val_transform = data_aug.MoCoSingleAug(img_size=args.img_size) # Assuming validation needs basic resize/normalize
 
     # Define Datasets and Dataloaders
     dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"] # Example datasets
