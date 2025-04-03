@@ -785,7 +785,6 @@ def main():
     
     # Early stopping setup
     patience = args.early_stopping
-    patience_counter = 0
     best_metric = 0  
 
     # Training loop
@@ -901,10 +900,7 @@ def main():
             best_metric = combined_metric
             save_checkpoint(checkpoint_state, checkpoint_dir, "best_clinical_checkpoint.pth")
             logging.info(f"New best combined metric: {best_metric:.4f}")
-            patience_counter = 0
-        else:
-            patience_counter += 1
-            logging.info(f"No improvement in combined metric. Patience: {patience_counter}/{patience}")
+            
         
         # Update scheduler
         scheduler.step()
