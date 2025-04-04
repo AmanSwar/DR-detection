@@ -744,9 +744,7 @@ def main():
         transformation=val_transform,
         batch_size=args.batch_size, # Can often use larger BS for validation
         num_workers=args.num_workers,
-        sampler=False # No sampling needed for validation
     ).get_loader()
-    logging.info(f"Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
 
     # --- Optimizer & Scheduler (Initial Frozen State) ---
     optimizer = optim.AdamW([
