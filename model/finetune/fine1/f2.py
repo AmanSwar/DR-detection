@@ -727,8 +727,8 @@ def main():
 
     # --- Define Transformations & Datasets ---
     # Use simpler transforms initially for stability
-    train_transform = data_aug.MoCoSingleAug(img_size=args.img_size, is_train=True) # Use basic train aug
-    val_transform = data_aug.MoCoSingleAug(img_size=args.img_size, is_train=False) # Use basic val aug
+    train_transform = data_aug.MoCoSingleAug(img_size=args.img_size) # Use basic train aug
+    val_transform = data_aug.MoCoSingleAug(img_size=args.img_size) # Use basic val aug
 
     logging.info(f"Using datasets: {args.dataset_names}")
     train_loader = data_set.UniformTrainDataloader(
