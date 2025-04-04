@@ -306,12 +306,12 @@ def validate(model, dataloader, device, epoch, wandb_run, lambda_consistency=0.1
             labels = labels.to(device)
             
             logits, grade_probs, _ = model(images)
-            # loss = OrdinalDomainLoss(
-            #     logits, labels, 
-            #     grade_outputs=grade_probs, 
-            #     lambda_consistency=lambda_consistency
-            # )
-            loss = nn.CrossEntropyLoss()(logits, labels)
+            loss = OrdinalDomainLoss(
+                logits, labels, 
+                grade_outputs=grade_probs, 
+                lambda_consistency=lambda_consistency
+            )
+            # loss = nn.CrossEntropyLoss()(logits, labels)
             running_loss += loss.item()
             probs = torch.softmax(logits, dim=1)
             _, predicted = torch.max(logits.data, 1)
