@@ -57,7 +57,7 @@ class UniTestDataset(Dataset):
         # elif ds == "messdr":
         #     img, label = MessdrGradingDataset().get_test_set()
         # elif ds == "sustech":
-        img, label = DeepDrDataset().get_test_set()
+        img, label = SustechDataset().get_test_set()
         print(img[:5])
         self.images = img
         self.labels = label
