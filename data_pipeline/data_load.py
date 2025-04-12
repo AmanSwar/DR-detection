@@ -432,6 +432,7 @@ class IdridGradingDataset(GradingDataset):
     def get_test_set(self):
         return self._test_image , self._test_label
     
+    
 
 
 class MessdrGradingDataset(GradingDataset):
@@ -534,9 +535,41 @@ class SustechDataset():
         return self.image_list , self.labels_list
     
 
+from charset_normalizer import from_bytes
+class DeepDrDataset:
+    def __init__(self):
 
+        self.image_path = "data/test/New folder/img"
+        self.labels_path = "data/test/New folder/labels.csv"
 
+        self.image_list = []
+        self.labels_list = []
+        self._get_image()
+        self._get_labels()
+    
+    def _get_image(self):
 
+        for img in os.listdir(self.image_path):
+
+            full_img_path = os.path.join(self.image_path , img)
+            self.image_list.append(full_img_path)
+
+    def _get_labels(self):
+
+        # labels_df = pd.read_csv(
+        #     self.labels_path,
+        #     encoding='utf-8',
+        #     on_bad_lines='replace',  # Instead of erroring out
+        # )
+        
+        labels_df = pd.read_csv(self.labels_path)
+        labels_dic = {img_name : label for img_name , label in zip(labels_df['image_id'] , labels_df['DR_Levels'])}
+
+        for img in tqdm(self.image_list):
+                self.labels_list.append(labels_dic[img.split('/')[-1].rstrip(".jpg")])
+            
+    def get_test_set(self):
+        return self.image_list , self.labels_list
 
 
 
