@@ -6,7 +6,7 @@ from einops import rearrange
 from torch.cuda.amp import autocast, GradScaler
 
 
-from model.DRijepa import DRIjepa
+from train.DRijepa import DRIjepa
 from PIL import Image
 
 import pytorch_lightning as pl

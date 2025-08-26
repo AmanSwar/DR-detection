@@ -13,7 +13,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.optim.lr_scheduler import LinearLR, ChainedScheduler
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 # from model.ijepa import IJEPA 
-from model.DRijepa import DRIjepa , IJEPALoss
+from train.DRijepa import DRIjepa , IJEPALoss
 from data_pipeline import data_aug , data_set
 class IJEPA_Lightning(pl.LightningModule):
     def __init__(

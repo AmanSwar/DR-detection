@@ -9,7 +9,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 
 import wandb
 
-from model.utils import RearrangeAndLayerNorm, vit_config
+from train.utils import RearrangeAndLayerNorm, vit_config
 
 
 #####################

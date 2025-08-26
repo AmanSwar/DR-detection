@@ -5,14 +5,14 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader , DistributedSampler
 from torch.cuda.amp import autocast , GradScaler
 import wandb
-from model import DRijepa ,DRijepa_scl
+from train import DRijepa ,DRijepa_scl
 
 from pathlib import Path
 from tqdm import tqdm
 import time
 import os
 
-from model.DRijepa_scl import train_step
+from train.DRijepa_scl import train_step
 from data_pipeline import data_set , data_aug
 
 def cleanup():

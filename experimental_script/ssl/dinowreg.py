@@ -12,7 +12,7 @@ import torch.multiprocessing as mp
 
 from data_pipeline.data_aug import DinowregAug 
 from data_pipeline.data_set import UniformTrainDataloader , SSLTrainLoader ,SSLValidLoader
-from model.utils import vit_config
+from train.utils import vit_config
 
 
 class ViTRegs(nn.Module):

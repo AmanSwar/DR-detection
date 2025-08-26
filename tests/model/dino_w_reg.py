@@ -1,7 +1,7 @@
 from tests.model.sample_data import SslDs
 from data_pipeline.data_aug import DinowregAug
 from torch.utils.data import DataLoader
-from model.dinowreg_swin import train_single_gpu
+from train.dinowreg_swin import train_single_gpu
 
 transform = DinowregAug(img_size=256)
 data_ds = SslDs(trans=transform)

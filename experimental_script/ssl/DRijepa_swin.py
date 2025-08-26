@@ -5,10 +5,10 @@ from tqdm import tqdm
 import wandb
 import time
 import timm  # make sure to install timm: pip install timm
-from model.utils import RearrangeAndLayerNorm, vit_config
+from train.utils import RearrangeAndLayerNorm, vit_config
 import os
 
-from model.utils import swin_config
+from train.utils import swin_config
 
 wandb.init()
 

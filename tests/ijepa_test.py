@@ -1,4 +1,4 @@
-from model.ijepa import PatchEmbedding , IJEPA , IJEPALoss , IJEPATrainer
+from train.ijepa import PatchEmbedding , IJEPA , IJEPALoss , IJEPATrainer
 
 import torch
 from typing import Tuple

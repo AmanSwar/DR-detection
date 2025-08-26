@@ -1,7 +1,7 @@
 import torch
 import pytest
 from torch.utils.data import DataLoader, TensorDataset
-from model.DRijepa import DRIjepa ,Patchify, TransformerEncoder, IJEPALoss, create_DRijepa, Trainer
+from train.DRijepa import DRIjepa ,Patchify, TransformerEncoder, IJEPALoss, create_DRijepa, Trainer
 
 @pytest.fixture
 def dummy_data():

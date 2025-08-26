@@ -8,7 +8,7 @@ import wandb
 import os
 from pathlib import Path
 
-from model.dinowreg import ViTRegs , RetAug , DINOwithReg , DINOLoss
+from train.dinowreg import ViTRegs , RetAug , DINOwithReg , DINOLoss
 from data_pipeline.data_set import UniformTrainDataloader
 
 

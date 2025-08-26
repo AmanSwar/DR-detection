@@ -16,7 +16,7 @@ except ImportError:
     wandb = None
     print("Weights & Biases not installed. Install it via `pip install wandb` for wandb logging.")
 
-from model.utils import vit_config, swin_test_config
+from train.utils import vit_config, swin_test_config
 from data_pipeline.data_aug import IbotRetAug
 from data_pipeline import data_set, data_aug  # adjust these imports as needed
 

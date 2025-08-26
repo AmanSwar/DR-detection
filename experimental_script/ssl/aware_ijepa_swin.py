@@ -300,7 +300,7 @@ if __name__ == "__main__":
    
     from data_pipeline.data_set import SSLTrainLoader, SSLValidLoader
     from data_pipeline.data_aug import IJEPAAugmentation
-    from model.utils import swin_config  
+    from train.utils import swin_config  
     
     
     augmentor = IJEPAAugmentation(img_size=swin_config["img_size"])

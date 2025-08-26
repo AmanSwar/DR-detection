@@ -6,7 +6,7 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
 
-from model.iBOT import  MaskedViT , CustomiBOT , RetAug
+from train.iBOT import  MaskedViT , CustomiBOT , RetAug
 from data_pipeline.data_set import UnitedTrainingDataset , UnitedValidationDataset
 
 class IbotlitModule(pl.LightningModule):

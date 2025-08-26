@@ -11,7 +11,7 @@ import numpy as np
 from tqdm import tqdm
 import os
 from timm import create_model
-from model.utils import swin_test_config
+from train.utils import swin_test_config
 
 class DINOHead(nn.Module):
 

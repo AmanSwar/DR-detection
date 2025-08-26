@@ -1,5 +1,5 @@
 from data_pipeline import data_set , data_aug
-from model import DRijepa , ijepa
+from train import DRijepa , ijepa
 from metrics import all_metrics
 
 #torch

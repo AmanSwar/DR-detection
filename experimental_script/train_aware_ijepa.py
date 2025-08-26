@@ -10,7 +10,7 @@ import wandb
 from typing import Optional, Dict, Any
 import torchmetrics
 
-from model.aware_ijepa import DRSpecificIJEPA , MemoryEfficientBatchSampler , DRSpecificAugmentation
+from train.aware_ijepa import DRSpecificIJEPA , MemoryEfficientBatchSampler , DRSpecificAugmentation
 from data_pipeline.data_set import UnitedTrainingDataset , UnitedValidationDataset
 
 class DRLightningModule(pl.LightningModule):

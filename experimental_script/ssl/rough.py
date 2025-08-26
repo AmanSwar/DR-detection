@@ -14,7 +14,7 @@ from tqdm import tqdm
 import wandb
 
 # Import your own modules (adjust these as needed)
-from model.utils import RearrangeAndLayerNorm, vit_config
+from train.utils import RearrangeAndLayerNorm, vit_config
 from data_pipeline import data_set, data_aug 
 
 

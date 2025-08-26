@@ -1,4 +1,4 @@
-from model.iBOT import MaskedViT , CustomiBOT
+from train.iBOT import MaskedViT , CustomiBOT
 from data_pipeline.data_aug import RetAug
 from tests.dl_test import ssltestdataset
 import torchvision

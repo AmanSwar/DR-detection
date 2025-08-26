@@ -1,7 +1,7 @@
 from tests.model.sample_data import SslDs
 from data_pipeline.data_aug import IJEPAAugmentation
 from torch.utils.data import DataLoader
-from model.DRijepa_swin import Trainer , create_DRijepa
+from train.DRijepa_swin import Trainer , create_DRijepa
 
 
 transform = IJEPAAugmentation(img_size=224)

@@ -2,7 +2,7 @@ from data_pipeline.data_aug import IbotRetAug
 from tests.model.sample_data import SslDs
 from torch.utils.data import DataLoader
 
-from model.iBOT_swin import CustomiBOT , train_single_gpu
+from train.iBOT_swin import CustomiBOT , train_single_gpu
 
 transform = IbotRetAug(img_size=224)
 data_ds = SslDs(trans=transform)

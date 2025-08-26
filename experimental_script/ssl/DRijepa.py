@@ -8,7 +8,7 @@ from tqdm import tqdm
 import wandb
 import time
 
-from model.utils import RearrangeAndLayerNorm , vit_config
+from train.utils import RearrangeAndLayerNorm , vit_config
 
 class Patchify(nn.Module):
     """

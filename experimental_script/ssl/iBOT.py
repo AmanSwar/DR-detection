@@ -8,7 +8,7 @@ from albumentations.pytorch import ToTensorV2
 from torchvision.transforms import RandomApply
 import pytorch_lightning as pl
 
-from model.utils import vit_config
+from train.utils import vit_config
 from data_pipeline.data_aug import IbotRetAug
 
 

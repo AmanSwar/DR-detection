@@ -4,7 +4,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.strategies import DDPStrategy
 
 
-from model.dinowreg import RetAug , RetinaDINOLightning
+from train.dinowreg import RetAug , RetinaDINOLightning
 from data_pipeline.data_set import UniformTrainDataloader
 
 def train_dino(config):

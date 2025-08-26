@@ -12,7 +12,7 @@ import wandb  # <-- Import wandb
 
 from data_pipeline.data_aug import DinowregAug 
 from data_pipeline.data_set import SSLTrainLoader, SSLValidLoader , DistSSLTrainLoader , DistSSLValidLoader
-from model.utils import vit_config, vit_test_config, swin_test_config, swin_config , get_mem_info
+from train.utils import vit_config, vit_test_config, swin_test_config, swin_config , get_mem_info
 
 
 
