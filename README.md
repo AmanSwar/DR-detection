@@ -25,19 +25,15 @@ Diabetic Retinopathy (DR) is a leading cause of preventable blindness worldwide,
 
 The RetinaSys pipeline is a carefully designed, two-stage process. The first stage builds a strong visual foundation through self-supervised learning, and the second stage specializes this knowledge for the clinical task of DR grading while ensuring robustness and fairness. This modular design allows for independent improvements to each component.
 
-- Your Architecture Diagram Here *
-    
-    ![RetinaSys Architecture](assets/training.drawio.png)
+![RetinaSys Architecture](assets/training.drawio.png)
     
 
 ## 👁️ Diabetic Retinopathy Grades
 
 The system is trained to classify retinal fundus images into five distinct grades of severity, following established clinical standards, from a healthy retina (No DR) to the most advanced stage (Proliferative DR).
 
-- Your Retinal Fundus Images Here *
-    
-    ![DR Grades](assets/DRgrades.png)
-    ![Attention Mapes](assets/attention_map.png)
+![DR Grades](assets/DRgrades.png)
+![Attention Mapes](assets/attention_map.png)
     
 
 ## 🚀 Getting Started
@@ -101,21 +97,13 @@ python scripts/1_preprocess_data.py --data_dir data/
 The model achieves strong performance across multiple evaluation criteria. It maintains high specificity (correctly identifying healthy patients) and demonstrates excellent ordinal agreement with ground-truth grades, as measured by the Quadratic Weighted Kappa (QWK). A high QWK score is clinically significant as it indicates that when the model does make an error, it is typically between adjacent grades (e.g., Mild vs. Moderate), which is far less severe than a major misdiagnosis.
 
 #### Training & Validation Curves
-
-- Your MoCo Pre-training Loss Curve Here *
-    
-    ![MoCo Loss](assets/moco_train_loss.png)
-    
-- Your Fine-tuning Loss and Metrics Curves Here *
-    
-    ![Finetuning Curves](assets/train_epoch.png)
+![MoCo Loss](assets/moco_train_loss.png)
+![Finetuning Curves](assets/train_epoch.png)
     
 
 ## 🧠 Explainable AI (XAI) Analysis
 
 A correct prediction is useful, but an explainable one is trustworthy. To build clinical trust and facilitate model debugging, RetinaSys provides clear visual explanations for its predictions. These visualizations highlight the specific pathological features (e.g., microaneurysms, hard exudates) that drive the model's diagnostic reasoning, creating a powerful feedback loop for clinicians.
 
-- Your XAI Analysis Figure Here *
-    
-    ![XAI Analysis](assets/all_combined.png)
+![XAI Analysis](assets/all_combined.png)
     
