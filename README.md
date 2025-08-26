@@ -27,7 +27,7 @@ The RetinaSys pipeline is a carefully designed, two-stage process. The first sta
 
 - Your Architecture Diagram Here *
     
-    (e.g., ![RetinaSys Architecture](assets/training.drawio.png))
+    ![RetinaSys Architecture](assets/training.drawio.png)
     
 
 ## 👁️ Diabetic Retinopathy Grades
@@ -36,8 +36,8 @@ The system is trained to classify retinal fundus images into five distinct grade
 
 - Your Retinal Fundus Images Here *
     
-    (e.g., ![DR Grades](assets/DRgrades.png))
-    (e.g., ![Attention Mapes](assets/attention_map.png))
+    ![DR Grades](assets/DRgrades.png)
+    ![Attention Mapes](assets/attention_map.png)
     
 
 ## 🚀 Getting Started
@@ -104,11 +104,11 @@ The model achieves strong performance across multiple evaluation criteria. It ma
 
 - Your MoCo Pre-training Loss Curve Here *
     
-    (e.g., ![MoCo Loss](assets/moco_train_loss.png))
+    ![MoCo Loss](assets/moco_train_loss.png)
     
 - Your Fine-tuning Loss and Metrics Curves Here *
     
-    (e.g., ![Finetuning Curves](assets/train_epoch.png))
+    ![Finetuning Curves](assets/train_epoch.png)
     
 
 ## 🧠 Explainable AI (XAI) Analysis
@@ -117,5 +117,5 @@ A correct prediction is useful, but an explainable one is trustworthy. To build 
 
 - Your XAI Analysis Figure Here *
     
-    (e.g., ![XAI Analysis](assets/all_combined.png))
+    ![XAI Analysis](assets/all_combined.png)
     
