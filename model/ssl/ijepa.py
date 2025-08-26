@@ -10,8 +10,8 @@ import wandb
 from tqdm import tqdm
 import time
 
+# patches for vit
 class PatchEmbedding(nn.Module):
-
     def __init__(self, img_size=224 , patch_size=16 , in_chan=3 , embed_dim=768):
         super().__init__()
         self.img_size = img_size
@@ -25,6 +25,7 @@ class PatchEmbedding(nn.Module):
 
     def forward(self, x):
         x = self.proj(x)  
+        #flatten the patches so h w -> h*w
         x = rearrange(x, 'b c h w -> b (h w) c')
         return x
     
@@ -118,12 +119,15 @@ class IJEPA(nn.Module):
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
+            #bias = 0
             nn.init.constant_(m.bias, 0)
+            #preserve initial feature scaling
             nn.init.constant_(m.weight, 1.0)
 
     @torch.no_grad()
     def momentum_update(self , target_encoder: nn.Module , context_encoder: nn.Module , momentum=0.999):
         for target_param, context_param in zip(target_encoder.parameters(), context_encoder.parameters()):
+            #inplace udpatation of params
             target_param.data.mul_(momentum).add_((1 - momentum) * context_param.data)
 
     
@@ -156,6 +160,7 @@ class IJEPA(nn.Module):
             for box in boxes[b]:
                 x1, y1, x2, y2 = box
                 target = features[b:b+1, :, y1:y2, x1:x2]
+                #resizing to standard 1,1
                 target = F.adaptive_avg_pool2d(target, (1, 1)).squeeze(-1).squeeze(-1)
                 batch_targets.append(target)
             target_features.append(torch.cat(batch_targets, dim=0))
@@ -172,7 +177,7 @@ class IJEPA(nn.Module):
         # Get context features
         context_features = self.context_encoder(x)
         
-        # Get target features (with no gradient)
+        # Get target features (with no gradient) cuz don't want to backproagate the loss through this
         with torch.no_grad():
             target_features = self.target_encoder(x)
             target_features = self.extract_targets(target_features, boxes)
@@ -195,8 +200,6 @@ class IJEPALoss(nn.Module):
         # Compute cosine similarity
         sim = torch.einsum('bnd,bnd->bn', predicted_features, target_features)
 
-       
-        # Compute loss (negative cosine similarity)
         temperature = 0.1
         sim = sim / temperature
         loss = -F.log_softmax(sim, dim=-1).mean()

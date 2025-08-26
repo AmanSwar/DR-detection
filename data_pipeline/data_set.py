@@ -156,6 +156,7 @@ class UnitedValidationDataset(Dataset):
         elif dataset_name == "idrid":
             idrid = IdridGradingDataset()
             idrid_valid_img, idrid_valid_labels = idrid.get_valid_set()
+            print(idrid_valid_img[:5])
             return idrid_valid_img, idrid_valid_labels
         
         elif dataset_name.lower() == "messdr":

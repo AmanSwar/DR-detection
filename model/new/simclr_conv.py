@@ -38,57 +38,6 @@ class SimCLRModel(nn.Module):
         return h, z
 
 
-# class NTXentLoss(nn.Module):
-#     def __init__(self, batch_size, temperature=0.5, device='cuda'):
-#         super(NTXentLoss, self).__init__()
-#         self.batch_size = batch_size
-#         self.temperature = temperature
-#         self.device = device
-#         self.criterion = nn.CrossEntropyLoss(reduction="sum")
-#         self.mask = self._get_correlated_mask().to(device)
-
-#     def _get_correlated_mask(self):
-#         # Create a mask to remove similarity of samples with themselves and their positive pair
-#         N = 2 * self.batch_size
-#         mask = torch.ones((N, N), dtype=bool)
-#         mask = mask.fill_diagonal_(False)
-#         for i in range(self.batch_size):
-#             mask[i, self.batch_size + i] = False
-#             mask[self.batch_size + i, i] = False
-#         return mask
-
-#     def forward(self, z_i, z_j):
-#         """
-#         Compute NT-Xent loss given two batches of projections.
-#         Args:
-#             z_i: Tensor of shape [batch_size, dim]
-#             z_j: Tensor of shape [batch_size, dim]
-#         """
-       
-#         z = torch.cat([z_i, z_j], dim=0)  
-     
-#         z = nn.functional.normalize(z, dim=1)
-     
-#         similarity_matrix = torch.matmul(z, z.T)  # shape: (2N, 2N)
-
-#         # Positive pairs: diagonal offset by batch_size
-#         sim_ij = torch.diag(similarity_matrix, self.batch_size)
-#         sim_ji = torch.diag(similarity_matrix, -self.batch_size)
-#         positives = torch.cat([sim_ij, sim_ji], dim=0).unsqueeze(1)  # shape: (2N, 1)
-
-#         # Negatives: filter out positives and self-similarities
-#         negatives = similarity_matrix[self.mask].view(2 * self.batch_size, -1)
-
-#         # Concatenate positive and negatives
-#         logits = torch.cat([positives, negatives], dim=1)
-#         logits /= self.temperature
-
-#         # Labels: positive at index 0 for each example
-#         labels = torch.zeros(2 * self.batch_size, dtype=torch.long).to(self.device)
-
-#         loss = self.criterion(logits, labels)
-#         loss /= 2 * self.batch_size
-#         return loss
 
 class NTXentLoss(nn.Module):
     def __init__(self, temperature=0.5, device='cuda'):
@@ -97,6 +46,7 @@ class NTXentLoss(nn.Module):
         self.device = device
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
 
+    #create a mask with diagnols as 0
     def _get_correlated_mask(self, batch_size):
         N = 2 * batch_size
         mask = torch.ones((N, N), dtype=bool).to(self.device)
@@ -130,7 +80,7 @@ class NTXentLoss(nn.Module):
 
 
 class LinearProbeHead(nn.Module):
-    """A simple linear classifier for evaluating SSL embeddings."""
+
     def __init__(self, embed_dim, num_classes=5):
         super().__init__()
         self.fc = nn.Linear(embed_dim, num_classes)
@@ -138,21 +88,18 @@ class LinearProbeHead(nn.Module):
     def forward(self, x):
         return self.fc(x)
 
+
+
 @torch.no_grad()
 def extract_features(model, dataloader, device):
-    """
-    Extract embeddings from the frozen encoder for each (image, label).
-    Return: features (N, embed_dim), labels (N,)
-    """
+    #returns extracted features and corresponding labels
     model.eval()
     all_feats = []
     all_labels = []
     for images, labels in dataloader:
         images = images.to(device)
-        # Use only the encoder (no projection) or encoder+projection
-        feats, _ = model(images)  # shape: [B, feature_dim]
-        # Optionally apply the projector if you want to evaluate that space
-        # _, feats = model(images)  # uncomment if you want to use projection space
+        #extract features
+        feats, _ = model(images)  
         all_feats.append(feats.cpu())
         all_labels.append(labels)
     all_feats = torch.cat(all_feats, dim=0)
@@ -160,24 +107,18 @@ def extract_features(model, dataloader, device):
     return all_feats, all_labels
 
 def linear_probe_evaluation(model, train_loader, val_loader, device, wandb_run):
-    """
-    Freeze the encoder, extract features, and train a linear classifier.
-    Then evaluate on a validation set.
-    """
-    # 1. Extract features
+
     train_feats, train_labels = extract_features(model, train_loader, device)
     val_feats, val_labels = extract_features(model, val_loader, device)
 
-    # 2. Create linear probe
+    #train_feates => [number of feat -> batch_size , feat_dim]
     embed_dim = train_feats.shape[1]
-    num_classes = len(train_labels.unique())  # e.g., 5 DR classes
+    num_classes = len(train_labels.unique()) 
     probe = LinearProbeHead(embed_dim, num_classes).to(device)
 
-    # 3. Train the linear probe
     optimizer = torch.optim.Adam(probe.parameters(), lr=1e-3)
     criterion = nn.CrossEntropyLoss()
 
-    # Simple training loop (few epochs)
     probe_epochs = 5
     for ep in range(probe_epochs):
         probe.train()
@@ -185,7 +126,6 @@ def linear_probe_evaluation(model, train_loader, val_loader, device, wandb_run):
         train_feats_shuf = train_feats[perm].to(device)
         train_labels_shuf = train_labels[perm].to(device)
 
-        # mini-batch training
         batch_size = 64
         for i in range(0, train_feats_shuf.size(0), batch_size):
             end = i + batch_size
@@ -193,12 +133,12 @@ def linear_probe_evaluation(model, train_loader, val_loader, device, wandb_run):
             batch_labels = train_labels_shuf[i:end]
 
             optimizer.zero_grad()
+            #pass through probe
             outputs = probe(batch_feats)
             loss = criterion(outputs, batch_labels)
             loss.backward()
             optimizer.step()
 
-    # 4. Evaluate
     probe.eval()
     val_feats_gpu = val_feats.to(device)
     with torch.no_grad():
@@ -210,30 +150,29 @@ def linear_probe_evaluation(model, train_loader, val_loader, device, wandb_run):
     wandb_run.log({"linear_probe_accuracy": acc})
     return acc
 
+
 def knn_evaluation(model, train_loader, val_loader, device, k=5, wandb_run=None):
-    """
-    A simple k-NN classifier on top of extracted embeddings.
-    """
     from collections import Counter
     import numpy as np
 
-    # 1. Extract features
     train_feats, train_labels = extract_features(model, train_loader, device)
     val_feats, val_labels = extract_features(model, val_loader, device)
 
-    # Convert to numpy for quick distance computations
+
+    #conver to ndarray
     train_feats_np = train_feats.numpy()
     train_labels_np = train_labels.numpy()
     val_feats_np = val_feats.numpy()
     val_labels_np = val_labels.numpy()
 
-    # 2. For each val sample, find the k nearest neighbors
+
+
     correct = 0
     for i in range(len(val_feats_np)):
-        diff = train_feats_np - val_feats_np[i]  # shape: [N, D]
-        dist = np.sum(diff**2, axis=1)           # shape: [N]
-        idx = np.argsort(dist)[:k]               # k nearest
-        neighbors = train_labels_np[idx]
+        diff = train_feats_np - val_feats_np[i] 
+        dist = np.sum(diff**2, axis=1)        
+        idx = np.argsort(dist)[:k]              
+        neighbors = train_labels_np[idx]    
         # majority vote
         majority = Counter(neighbors).most_common(1)[0][0]
         if majority == val_labels_np[i]:
@@ -253,7 +192,6 @@ def train_one_epoch(model, dataloader, optimizer, scheduler, loss_fn, device, ep
         x2 = x2.to(device)
 
         optimizer.zero_grad()
-        # Forward pass for both augmented views
         _, z1 = model(x1)
         _, z2 = model(x2)
 
@@ -299,9 +237,10 @@ def save_checkpoint(state, checkpoint_dir, filename):
     torch.save(state, filepath)
     logging.info(f"Saved checkpoint: {filepath}")
 
-# -----------------------------
-# 6. Main Training Loop
-# -----------------------------
+
+
+
+
 def main():
     config = {
         "epochs": 300,

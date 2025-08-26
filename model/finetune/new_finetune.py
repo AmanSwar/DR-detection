@@ -81,7 +81,6 @@ class GradeConsistencyHead(nn.Module):
             nn.Linear(256, num_grades)
         )
         
-        # Ordinal relationship encoder
         self.ordinal_encoder = nn.Sequential(
             nn.Linear(feature_dim, 256),
             nn.GELU(),
@@ -109,7 +108,6 @@ class EnhancedDRClassifier(nn.Module):
             if k.startswith('query_encoder.'):
                 backbone_state_dict[k.replace('query_encoder.', '')] = v
         
-        # Load the weights into the backbone
         self.backbone.load_state_dict(backbone_state_dict)
         
         if freeze_backbone:
@@ -122,7 +120,6 @@ class EnhancedDRClassifier(nn.Module):
         # Add lesion attention module
         self.attention = LesionAttentionModule(self.feature_dim)
         
-        # Main classifier head
         self.classifier = nn.Sequential(
             nn.Linear(self.feature_dim, 1024),
             nn.BatchNorm1d(1024),
@@ -135,21 +132,19 @@ class EnhancedDRClassifier(nn.Module):
             nn.Linear(512, num_classes)
         )
         
-        # Grade consistency head for logical ordering of DR grades
         self.grade_head = GradeConsistencyHead(self.feature_dim, num_grades=num_classes)
         
-        # Domain classifier for domain adaptation (for multiple datasets)
+
+        #classify the domain -> from the dataset
         self.domain_classifier = nn.Sequential(
             nn.Linear(self.feature_dim, 256),
             nn.ReLU(inplace=True),
-            nn.Linear(256, 5)  # Number of datasets (eyepacs, aptos, ddr, idrid, messdr)
+            nn.Linear(256, 5)  
         )
         
-        # Prototypes for each DR grade
         self.register_buffer('prototypes', torch.zeros(num_classes, self.feature_dim))
         self.register_buffer('prototype_counts', torch.zeros(num_classes))
         
-        # Initialize weights for better convergence
         self._initialize_weights()
         
     def _initialize_weights(self):
@@ -164,30 +159,25 @@ class EnhancedDRClassifier(nn.Module):
                     nn.init.constant_(m.bias, 0)
         
     def forward(self, x, alpha=0.0, get_attention=False, update_prototypes=False, labels=None):
-        # Get features from backbone
+        # 1) pass through the pre trained backbone -> get feat  (bs , 768 , 8 , 8)
         features = self.backbone.forward_features(x)
         # print("Backbone features shape:", features.shape)
-        # Apply attention
-        attended_features = self.attention(features)
+        # attn time
+        attended_features = self.attention(features)  # (bs , 768 , 8 , 8)
         
-        # Global average pooling for attended features
         h = torch.mean(attended_features, dim=(2, 3))
         
-        # Main class prediction
         logits = self.classifier(h)
-        
-        # Grade consistency prediction
+        #----
         grade_probs = self.grade_head(h)
         
-        # Update prototypes during training if requested
         if update_prototypes and labels is not None:
             with torch.no_grad():
                 for i, label in enumerate(labels):
-                    self.prototypes[label] = self.prototypes[label] * (self.prototype_counts[label] / (self.prototype_counts[label] + 1)) + \
-                                           h[i] * (1 / (self.prototype_counts[label] + 1))
+                    self.prototypes[label] = self.prototypes[label] * (self.prototype_counts[label] / (self.prototype_counts[label] + 1)) + h[i] * (1 / (self.prototype_counts[label] + 1))
                     self.prototype_counts[label] += 1
         
-        # Domain classification with gradient reversal
+
         if alpha > 0:
             reversed_features = GradientReversal.apply(h, alpha)
             domain_logits = self.domain_classifier(reversed_features)
@@ -205,27 +195,24 @@ class EnhancedDRClassifier(nn.Module):
 
 
 def combined_loss(outputs, labels, grade_outputs=None, domain_logits=None, domain_labels=None, lambda_consistency=0.3, lambda_domain=0.1):
-    # Main classification loss
     main_criterion = nn.CrossEntropyLoss()
     main_loss = main_criterion(outputs, labels)
     
     loss = main_loss
     
-    # Enhanced grade consistency loss
     if grade_outputs is not None:
         grade_logits, ordinal_thresholds = grade_outputs
         batch_size = labels.size(0)
         num_classes = grade_logits.size(1)
         
-        # Standard grade logits loss
+
+        # consistency loss -> creates a matric based on the labels
         targets = torch.zeros_like(grade_logits)
         for i in range(batch_size):
             targets[i, :labels[i]+1] = 1.0
-            
         consistency_loss = F.binary_cross_entropy_with_logits(grade_logits, targets)
         
-        # Ordinal regression loss for thresholds
-        # For each threshold k, if class > k then threshold k should be 1, else 0
+
         if ordinal_thresholds is not None:
             ordinal_targets = torch.zeros_like(ordinal_thresholds)
             for i in range(batch_size):
@@ -238,7 +225,6 @@ def combined_loss(outputs, labels, grade_outputs=None, domain_logits=None, domai
         
         loss += lambda_consistency * consistency_loss
     
-    # Domain classification loss if available
     if domain_logits is not None and domain_labels is not None:
         domain_criterion = nn.CrossEntropyLoss()
         domain_loss = domain_criterion(domain_logits, domain_labels)

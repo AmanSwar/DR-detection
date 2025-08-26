@@ -1,0 +1,141 @@
+2025-03-22 17:54:11 [INFO] Using device: cuda
+2025-03-22 17:54:33 [INFO] Using device: cuda
+2025-03-22 17:54:38 [INFO] --- Epoch 1/100 ---
+2025-03-22 17:57:20 [INFO] Using device: cuda
+2025-03-22 17:57:24 [INFO] --- Epoch 1/100 ---
+2025-03-22 18:01:37 [INFO] Using device: cuda
+2025-03-22 18:01:39 [INFO] --- Epoch 1/100 ---
+2025-03-22 18:17:14 [INFO] Using device: cuda
+2025-03-22 18:17:18 [INFO] --- Epoch 1/100 ---
+2025-03-22 18:19:59 [INFO] Using device: cuda
+2025-03-22 18:20:01 [INFO] --- Epoch 1/100 ---
+2025-03-22 18:21:17 [INFO] Using device: cuda
+2025-03-22 18:21:19 [INFO] --- Epoch 1/100 ---
+2025-03-22 18:23:55 [INFO] Using device: cuda
+2025-03-22 18:24:00 [INFO] --- Epoch 1/100 ---
+2025-03-22 18:26:59 [INFO] Using device: cuda
+2025-03-22 18:27:03 [INFO] --- Epoch 1/100 ---
+2025-03-22 18:27:05 [INFO] Epoch [1] Step [0/5836] Loss: 11.5088 LR: 0.000040
+2025-03-22 18:27:06 [INFO] Epoch [1] Step [10/5836] Loss: 17.9937 LR: 0.000040
+2025-03-22 18:27:07 [INFO] Epoch [1] Step [20/5836] Loss: 16.8616 LR: 0.000040
+2025-03-22 18:27:08 [INFO] Epoch [1] Step [30/5836] Loss: 12.7110 LR: 0.000040
+2025-03-22 18:27:10 [INFO] Epoch [1] Step [40/5836] Loss: 24.1681 LR: 0.000040
+2025-03-22 18:27:11 [INFO] Epoch [1] Step [50/5836] Loss: 12.0831 LR: 0.000040
+2025-03-22 18:27:12 [INFO] Epoch [1] Step [60/5836] Loss: 11.4989 LR: 0.000040
+2025-03-22 18:27:14 [INFO] Epoch [1] Step [70/5836] Loss: 19.8095 LR: 0.000040
+2025-03-22 18:27:15 [INFO] Epoch [1] Step [80/5836] Loss: 16.5741 LR: 0.000040
+2025-03-22 18:27:16 [INFO] Epoch [1] Step [90/5836] Loss: 24.3836 LR: 0.000040
+2025-03-22 18:27:17 [INFO] Epoch [1] Step [100/5836] Loss: 14.2202 LR: 0.000040
+2025-03-22 18:27:18 [INFO] Epoch [1] Step [110/5836] Loss: 16.7321 LR: 0.000040
+2025-03-22 18:28:14 [INFO] Using device: cuda
+2025-03-22 18:28:18 [INFO] --- Epoch 1/100 ---
+2025-03-22 18:28:27 [INFO] Epoch [1] Step [0/5836] Loss: 21.3072 LR: 0.000040
+2025-03-22 18:28:28 [INFO] Epoch [1] Step [10/5836] Loss: 16.4678 LR: 0.000040
+2025-03-22 18:28:29 [INFO] Epoch [1] Step [20/5836] Loss: 23.7421 LR: 0.000040
+2025-03-22 18:28:31 [INFO] Epoch [1] Step [30/5836] Loss: 22.7660 LR: 0.000040
+2025-03-22 18:28:32 [INFO] Epoch [1] Step [40/5836] Loss: 18.2355 LR: 0.000040
+2025-03-22 18:28:33 [INFO] Epoch [1] Step [50/5836] Loss: 10.3059 LR: 0.000040
+2025-03-22 18:28:34 [INFO] Epoch [1] Step [60/5836] Loss: 10.2621 LR: 0.000040
+2025-03-22 18:28:55 [INFO] Using device: cuda
+2025-03-22 18:28:58 [INFO] --- Epoch 1/100 ---
+2025-03-22 18:30:19 [INFO] Using device: cuda
+2025-03-22 18:30:26 [INFO] --- Epoch 1/100 ---
+2025-03-22 18:30:33 [INFO] Epoch [1] Step [0/730] Loss: 18.9182 LR: 0.000040
+2025-03-22 18:31:08 [INFO] Using device: cuda
+2025-03-22 18:31:11 [INFO] --- Epoch 1/100 ---
+2025-03-22 18:31:26 [INFO] Epoch [1] Step [0/365] Loss: 15.3207 LR: 0.000040
+2025-03-22 18:31:51 [INFO] Epoch [1] Step [10/365] Loss: 15.2314 LR: 0.000040
+2025-03-22 18:32:22 [INFO] Epoch [1] Step [20/365] Loss: 16.4290 LR: 0.000040
+2025-03-22 18:32:48 [INFO] Epoch [1] Step [30/365] Loss: 14.3356 LR: 0.000040
+2025-03-24 01:22:50 [INFO] Using device: cuda
+2025-03-24 01:22:54 [INFO] --- Epoch 1/100 ---
+2025-03-24 01:23:08 [INFO] Epoch [1] Step [0/365] Loss: 16.3547 LR: 0.000040
+2025-03-24 01:23:29 [INFO] Epoch [1] Step [10/365] Loss: 14.4400 LR: 0.000040
+2025-03-24 01:23:53 [INFO] Epoch [1] Step [20/365] Loss: 14.7204 LR: 0.000040
+2025-03-24 01:24:17 [INFO] Epoch [1] Step [30/365] Loss: 13.9728 LR: 0.000040
+2025-03-24 01:24:42 [INFO] Epoch [1] Step [40/365] Loss: 12.6675 LR: 0.000040
+2025-03-24 01:25:04 [INFO] Epoch [1] Step [50/365] Loss: 14.1958 LR: 0.000040
+2025-03-24 01:25:31 [INFO] Epoch [1] Step [60/365] Loss: 11.9385 LR: 0.000040
+2025-03-24 02:21:58 [INFO] Using device: cuda
+2025-03-24 02:23:33 [INFO] Using device: cuda
+2025-03-24 02:23:38 [INFO] --- Epoch 1/100 ---
+2025-03-24 02:23:52 [INFO] Epoch [1] Step [0/365] Loss: 13.1679 LR: 0.000040
+2025-03-24 02:24:13 [INFO] Epoch [1] Step [10/365] Loss: 15.9723 LR: 0.000040
+2025-03-24 02:24:37 [INFO] Epoch [1] Step [20/365] Loss: 16.5851 LR: 0.000040
+2025-03-24 02:25:00 [INFO] Epoch [1] Step [30/365] Loss: 13.2914 LR: 0.000040
+2025-03-24 02:25:23 [INFO] Epoch [1] Step [40/365] Loss: 15.1800 LR: 0.000040
+2025-03-24 02:28:30 [INFO] Using device: cuda
+2025-03-24 02:28:33 [INFO] --- Epoch 1/100 ---
+2025-03-24 02:28:46 [INFO] Epoch [1] Step [0/365] Loss: 14.2581 LR: 0.000040
+2025-03-24 02:29:08 [INFO] Epoch [1] Step [10/365] Loss: 12.3797 LR: 0.000040
+2025-03-24 02:29:32 [INFO] Epoch [1] Step [20/365] Loss: 13.3395 LR: 0.000040
+2025-03-24 02:29:57 [INFO] Epoch [1] Step [30/365] Loss: 13.2465 LR: 0.000040
+2025-03-24 02:30:23 [INFO] Epoch [1] Step [40/365] Loss: 13.7622 LR: 0.000040
+2025-03-24 02:31:24 [INFO] Using device: cuda
+2025-03-24 02:31:28 [INFO] --- Epoch 1/100 ---
+2025-03-24 02:31:57 [INFO] Epoch [1] Step [0/183] Loss: 13.9812 LR: 0.000040
+2025-03-24 02:32:41 [INFO] Epoch [1] Step [10/183] Loss: 13.5387 LR: 0.000040
+2025-03-24 02:33:29 [INFO] Epoch [1] Step [20/183] Loss: 12.4838 LR: 0.000040
+2025-03-24 12:36:57 [INFO] Using device: cuda
+2025-03-24 12:37:03 [INFO] --- Epoch 1/100 ---
+2025-03-24 12:38:26 [INFO] Using device: cuda
+2025-03-24 12:38:30 [INFO] --- Epoch 1/100 ---
+2025-03-24 12:40:10 [INFO] Using device: cuda
+2025-03-24 12:40:12 [INFO] --- Epoch 1/100 ---
+2025-03-24 12:41:11 [INFO] Using device: cuda
+2025-03-24 12:41:14 [INFO] --- Epoch 1/100 ---
+2025-03-24 12:41:42 [INFO] Epoch [1] Step [0/183] Loss: 15.3910 LR: 0.000040
+2025-03-24 12:51:25 [INFO] Using device: cuda
+2025-03-24 12:51:28 [INFO] --- Epoch 1/100 ---
+2025-03-24 12:51:57 [INFO] Epoch [1] Step [0/183] Loss: 14.3024 LR: 0.000040
+2025-03-24 12:52:40 [INFO] Epoch [1] Step [10/183] Loss: 14.2994 LR: 0.000040
+2025-03-24 12:53:25 [INFO] Epoch [1] Step [20/183] Loss: 12.4501 LR: 0.000040
+2025-03-24 12:54:09 [INFO] Epoch [1] Step [30/183] Loss: 12.4963 LR: 0.000040
+2025-03-24 12:54:55 [INFO] Epoch [1] Step [40/183] Loss: 11.4606 LR: 0.000040
+2025-03-24 12:55:45 [INFO] Epoch [1] Step [50/183] Loss: 11.8071 LR: 0.000040
+2025-03-24 12:56:30 [INFO] Epoch [1] Step [60/183] Loss: 11.4865 LR: 0.000040
+2025-03-24 12:57:21 [INFO] Epoch [1] Step [70/183] Loss: 10.3068 LR: 0.000040
+2025-03-24 12:58:11 [INFO] Epoch [1] Step [80/183] Loss: 10.7224 LR: 0.000040
+2025-03-24 12:59:01 [INFO] Epoch [1] Step [90/183] Loss: 11.4055 LR: 0.000040
+2025-03-24 12:59:52 [INFO] Epoch [1] Step [100/183] Loss: 11.8957 LR: 0.000040
+2025-03-24 13:00:40 [INFO] Epoch [1] Step [110/183] Loss: 9.5901 LR: 0.000040
+2025-03-24 13:11:16 [INFO] Using device: cuda
+2025-03-24 13:11:20 [INFO] --- Epoch 1/100 ---
+2025-03-24 13:17:39 [INFO] Using device: cuda
+2025-03-24 13:17:42 [INFO] --- Epoch 1/100 ---
+2025-03-24 13:18:00 [INFO] Epoch [1] Step [0/365] Loss: 15.4895 LR: 0.000040
+2025-03-24 13:18:20 [INFO] Epoch [1] Step [10/365] Loss: 15.6232 LR: 0.000040
+2025-03-24 13:18:43 [INFO] Epoch [1] Step [20/365] Loss: 15.4779 LR: 0.000040
+2025-03-24 13:19:07 [INFO] Epoch [1] Step [30/365] Loss: 12.9154 LR: 0.000040
+2025-03-24 17:33:27 [INFO] Using device: cuda
+2025-03-24 17:33:53 [INFO] Using device: cuda
+2025-03-24 17:35:39 [INFO] Using device: cuda
+2025-03-24 17:35:42 [INFO] --- Epoch 1/100 ---
+2025-03-24 17:35:55 [INFO] Epoch [1] Step [0/365] Loss: 15.9039 LR: 0.000040
+2025-03-25 14:11:50 [INFO] Using device: cuda
+2025-03-25 14:14:33 [INFO] Using device: cuda
+2025-03-25 14:15:50 [INFO] Using device: cuda
+2025-03-25 14:15:52 [INFO] --- Epoch 1/200 ---
+2025-03-25 14:17:17 [INFO] Using device: cuda
+2025-03-25 14:17:23 [INFO] --- Epoch 1/200 ---
+2025-03-25 14:17:29 [INFO] Epoch [1] Step [0/1459] Loss: 15.6792 LR: 0.000040
+2025-03-25 14:17:51 [INFO] Epoch [1] Step [10/1459] Loss: nan LR: 0.000040
+2025-03-25 14:18:13 [INFO] Epoch [1] Step [20/1459] Loss: nan LR: 0.000040
+2025-03-25 14:21:20 [INFO] Using device: cuda
+2025-03-25 14:21:23 [INFO] --- Epoch 1/200 ---
+2025-03-25 14:21:30 [INFO] Epoch [1] Step [0/1459] Loss: 12.8824 LR: 0.000040
+2025-03-25 14:21:57 [INFO] Epoch [1] Step [10/1459] Loss: nan LR: 0.000040
+2025-03-25 14:22:27 [INFO] Epoch [1] Step [20/1459] Loss: nan LR: 0.000040
+2025-03-25 14:23:01 [INFO] Epoch [1] Step [30/1459] Loss: nan LR: 0.000040
+2025-03-25 14:48:06 [INFO] Using device: cuda
+2025-03-25 14:49:30 [INFO] Using device: cuda
+2025-03-25 14:49:35 [INFO] --- Epoch 1/200 ---
+2025-03-25 14:49:43 [INFO] Epoch [1] Step [0/1459] Loss: 15.3602 LR: 0.000100
+2025-03-25 14:50:06 [INFO] Epoch [1] Step [10/1459] Loss: 10.2671 LR: 0.000100
+2025-03-25 14:50:31 [INFO] Epoch [1] Step [20/1459] Loss: 11.4552 LR: 0.000100
+2025-03-25 14:50:57 [INFO] Epoch [1] Step [30/1459] Loss: 11.1915 LR: 0.000100
+2025-03-25 14:51:24 [INFO] Epoch [1] Step [40/1459] Loss: 9.3312 LR: 0.000100
+2025-03-25 14:51:49 [INFO] Epoch [1] Step [50/1459] Loss: 9.2651 LR: 0.000100
+2025-03-25 14:52:16 [INFO] Epoch [1] Step [60/1459] Loss: 8.8637 LR: 0.000100
+2025-03-25 14:52:43 [INFO] Epoch [1] Step [70/1459] Loss: 9.3654 LR: 0.000100
+2025-03-25 14:53:12 [INFO] Epoch [1] Step [80/1459] Loss: 9.4157 LR: 0.000100

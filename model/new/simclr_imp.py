@@ -19,20 +19,20 @@ import wandb
 
 from data_pipeline import data_aug, data_set
 
+'''
+Suggested by CLAUDE not my innovation
+'''
 
 class LesionAttentionModule(nn.Module):
-    """Attention module focused on detecting and highlighting lesions"""
     def __init__(self, in_channels):
         super(LesionAttentionModule, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, in_channels // 8, kernel_size=1)
         self.conv2 = nn.Conv2d(in_channels // 8, in_channels, kernel_size=1)
         
     def forward(self, x):
-        # Channel attention path
         avg_pool = F.avg_pool2d(x, x.size(2))
         channel_attention = self.conv2(F.relu(self.conv1(avg_pool)))
         
-        # Spatial attention path - detect high contrast regions (potential lesions)
         spatial_attention = torch.std(x, dim=1, keepdim=True)
         spatial_attention = F.sigmoid(spatial_attention)
         
@@ -65,7 +65,6 @@ class GradeConsistencyHead(nn.Module):
         
     def forward(self, x):
         logits = self.grade_predictor(x)
-        # Enforce ordinal relationship between grades (monotonically increasing)
         cumulative_probs = torch.sigmoid(logits)
         return cumulative_probs
 
@@ -90,25 +89,23 @@ class EnhancedSimCLRModel(nn.Module):
             nn.Linear(hidden_dim, projection_dim)
         )
         
-        # Self-supervised grade consistency head
         self.grade_head = GradeConsistencyHead(feature_dim)
         
-        # Domain classifier (for domain adaptation)
         self.domain_classifier = nn.Sequential(
             nn.Linear(feature_dim, 256),
             nn.ReLU(inplace=True),
             nn.Linear(256, 5)  # Number of datasets
         )
         
-        # Prototype vectors for clustering-based learning
-        self.register_buffer('prototypes', torch.zeros(5, feature_dim))  # 5 grade prototypes
+
+        self.register_buffer('prototypes', torch.zeros(5, feature_dim))  
         self.register_buffer('prototype_counts', torch.zeros(5))
 
+
     def forward(self, x, get_attention=False):
-        # Get features from encoder
+
         features = self.encoder(x)
         
-        # Apply attention mechanism for lesion awareness
         if hasattr(self, 'attention'):
             attended_features = self.attention(features)
             # Global average pooling for attended features
@@ -126,7 +123,6 @@ class EnhancedSimCLRModel(nn.Module):
     
     def forward_domain(self, x, alpha=1.0):
         h, _ = self.forward(x)
-        # Apply gradient reversal for domain adaptation
         reverse_h = GradientReversal.apply(h, alpha)
         domain_preds = self.domain_classifier(reverse_h)
         return domain_preds
@@ -178,24 +174,16 @@ class EnhancedNTXentLoss(nn.Module):
         return hard_negatives
 
     def forward(self, z_i, z_j, prototypes=None):
-        """
-        Enhanced NT-Xent loss with hard negative mining and prototype guidance
-        Args:
-            z_i, z_j: Normalized embeddings from two views [batch_size, dim]
-            prototypes: Optional prototype vectors for each class
-        """
-        # Concatenate all embeddings
+        
         z = torch.cat([z_i, z_j], dim=0)
         
         # Compute similarity matrix
         similarity_matrix = torch.matmul(z, z.T)
         
-        # Extract positive pairs
         sim_ij = torch.diag(similarity_matrix, self.batch_size)
         sim_ji = torch.diag(similarity_matrix, -self.batch_size)
         positives = torch.cat([sim_ij, sim_ji], dim=0).unsqueeze(1)
         
-        # Process negative pairs with special handling for hard negatives
         if self.use_hard_negative:
             hard_negative_mask = self._identify_hard_negatives(similarity_matrix)
             # Apply higher weight to hard negatives
@@ -211,20 +199,16 @@ class EnhancedNTXentLoss(nn.Module):
         
         # Add prototype guidance if available
         if prototypes is not None and prototypes.size(0) > 0:
-            # Calculate similarity with prototypes
+ 
             proto_sim = torch.matmul(z, prototypes.T)  # [2N, num_classes]
-            # We want embeddings to be similar to their respective class prototypes
-            # This can be implemented in different ways depending on if we have grade labels
-            
-            # For this implementation, we'll just add the prototype similarities as additional positives
-            # In a more advanced version, you'd use actual grade labels if available
+         
             negatives = torch.cat([negatives, proto_sim], dim=1)
         
-        # Calculate final loss
+
         logits = torch.cat([positives, negatives], dim=1)
         logits /= self.temperature
         
-        # Labels: positive at index 0 for each example
+
         labels = torch.zeros(2 * self.batch_size, dtype=torch.long).to(self.device)
         
         loss = self.criterion(logits, labels)
@@ -233,18 +217,13 @@ class EnhancedNTXentLoss(nn.Module):
 
 
 class GradeConsistencyLoss(nn.Module):
-    """Loss that ensures grade predictions follow a logical order (monotonicity)"""
+
     def __init__(self):
         super(GradeConsistencyLoss, self).__init__()
         
     def forward(self, grade_preds):
-        """
-        Args:
-            grade_preds: Tensor of shape [batch_size, num_grades]
-                         representing cumulative probabilities
-        """
-        # Ensure monotonically decreasing probabilities (P(grade >= k))
-        # For each sample, P(grade >= k) should be less than P(grade >= k-1)
+      
+ 
         diffs = grade_preds[:, :-1] - grade_preds[:, 1:]
         # All differences should be positive for proper ordering
         monotonicity_loss = F.relu(-diffs).mean()
@@ -266,7 +245,6 @@ def train_one_epoch(model, dataloader, optimizer, scheduler, loss_fn, device, ep
         
         optimizer.zero_grad()
         
-        # Forward pass for both augmented views
         h1, z1 = model(x1)
         h2, z2 = model(x2)
         
@@ -290,7 +268,6 @@ def train_one_epoch(model, dataloader, optimizer, scheduler, loss_fn, device, ep
             total_loss += 0.1 * domain_loss  # Weight for domain loss
             running_domain_loss += domain_loss.item()
         
-        # Grade consistency loss (if enabled)
         grade_loss = 0
         if use_grade_consistency and grade_labels is not None:
             grade_preds1 = model.forward_grade(x1)
@@ -459,9 +436,7 @@ def visualize_attention_maps(model, dataloader, device, wandb_run, num_samples=5
 
 
 def improved_knn_evaluation(model, train_loader, val_loader, device, k_values=[1, 5, 10, 20], wandb_run=None):
-    """
-    Enhanced k-NN classifier with multiple k values and distance metrics
-    """
+
     from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
     from sklearn.neighbors import KNeighborsClassifier
     import numpy as np
@@ -493,7 +468,6 @@ def improved_knn_evaluation(model, train_loader, val_loader, device, k_values=[1
             f1 = f1_score(val_labels_np, y_pred, average='weighted') * 100
             cm = confusion_matrix(val_labels_np, y_pred)
             
-            # Track best result
             if acc > best_acc:
                 best_acc = acc
                 best_k = k
@@ -528,14 +502,9 @@ def improved_knn_evaluation(model, train_loader, val_loader, device, k_values=[1
 
 
 def improved_linear_probe(model, train_loader, val_loader, device, wandb_run):
-    """
-    Enhanced linear probe with regularization and class weighting
-    """
-    # Extract features
     train_feats, _, train_labels = extract_features_with_attention(model, train_loader, device)
     val_feats, _, val_labels = extract_features_with_attention(model, val_loader, device)
     
-    # Create class weights to handle class imbalance
     class_counts = torch.bincount(train_labels)
     class_weights = 1.0 / class_counts.float()
     class_weights = class_weights / class_weights.sum() * len(class_weights)

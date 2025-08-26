@@ -204,9 +204,8 @@ def OrdinalDomainLoss(outputs, labels, grade_outputs=None, domain_logits=None, d
         loss += lambda_domain * domain_loss
     
     return loss
-
 def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scaler=None, 
-                   lambda_consistency=0.1, lambda_domain=0.05, domain_adaptation=True):
+                    lambda_consistency=0.1, lambda_domain=0.05, domain_adaptation=True, scheduler=None):
     model.train()
     running_loss = 0.0
     all_labels = []
@@ -252,6 +251,10 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
             grad_norm = clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
         
+        # Step the scheduler after each batch
+        if scheduler is not None:
+            scheduler.step()
+        
         running_loss += loss.item()
         
         _, predicted = torch.max(logits.data, 1)
@@ -287,7 +290,7 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch, wandb_run, scal
             "train_epoch_loss": avg_loss,
             "epoch": epoch + 1
         })
-        return avg_loss, None, None
+        return avg_loss, None, None 
 
 def validate(model, dataloader, device, epoch, wandb_run, lambda_consistency=0.1):
     model.eval()
@@ -377,22 +380,22 @@ def save_checkpoint(state, checkpoint_dir, filename):
     filepath = os.path.join(checkpoint_dir, filename)
     torch.save(state, filepath)
     logging.info(f"Saved checkpoint: {filepath}")
-
 def main():
     parser = argparse.ArgumentParser(description="Fine-tune MoCo model for Diabetic Retinopathy Classification")
     parser.add_argument("--checkpoint", type=str, default="model/new/chckpt/moco/new/best_checkpoint.pth", help="Path to MoCo checkpoint")
     parser.add_argument("--epochs", type=int, default=200, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=128, help="Batch size")
-    parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate")  # Reduced from 1e-3
+    parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate")
     parser.add_argument("--lr_min", type=float, default=1e-6, help="Minimum learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay for optimizer")
     parser.add_argument("--num_classes", type=int, default=5, help="Number of DR classes")
     parser.add_argument("--img_size", type=int, default=256, help="Image size")
     parser.add_argument("--use_amp", action="store_true", default=False, help="Use automatic mixed precision")
     parser.add_argument("--use_mixup", action="store_true", default=True, help="Use Mixup augmentation")
-    parser.add_argument("--lambda_consistency", type=float, default=0.05, help="Weight for grade consistency loss")  # Reduced from 0.3
-    parser.add_argument("--lambda_domain", type=float, default=0.01, help="Weight for domain adaptation loss")  # Reduced from 0.1
+    parser.add_argument("--lambda_consistency", type=float, default=0.05, help="Weight for grade consistency loss")
+    parser.add_argument("--lambda_domain", type=float, default=0.01, help="Weight for domain adaptation loss")
     parser.add_argument("--domain_adaptation", action="store_true", default=True, help="Use domain adaptation")
+    parser.add_argument("--resume", type=str, default="chckpt/finetune_nofreeze/fine_3/final_checkpoint.pth", help="Path to checkpoint to resume from")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -454,7 +457,7 @@ def main():
 
     scheduler = OneCycleLR(
         optimizer,
-        max_lr= [1e-5, 1e-5, 1e-5, 1e-5, 1e-7],   #[args.lr, args.lr, args.lr, args.lr, args.lr / 10],  # Adjusted max_lr for attention
+        max_lr=[1e-5, 1e-5, 1e-5, 1e-5, 1e-7],
         total_steps=total_steps,
         pct_start=0.2,
         div_factor=10,
@@ -463,6 +466,18 @@ def main():
     )
 
     scaler = GradScaler() if args.use_amp else None
+
+    # Initialize start_epoch and load checkpoint if resuming
+    start_epoch = 0
+    if args.resume:
+        logging.info(f"Resuming from checkpoint: {args.resume}")
+        checkpoint = torch.load(args.resume, map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        if 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict'] is not None:
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        start_epoch = checkpoint['epoch']
+        logging.info(f"Resuming training from epoch {start_epoch}")
 
     best_val_metrics = {
         "loss": float('inf'),
@@ -473,24 +488,22 @@ def main():
         "qwk": 0,
         "auc": 0
     }
-    patience_counter = 0
     best_metric = 0
 
-    for epoch in range(args.epochs):
+    for epoch in range(start_epoch, args.epochs):
         logging.info(f"--- Epoch {epoch+1}/{args.epochs} ---")
         
         train_loss, train_acc, train_f1 = train_one_epoch(
             model, train_loader, optimizer, device, epoch, wandb_run,
             scaler=scaler, lambda_consistency=args.lambda_consistency,
-            lambda_domain=args.lambda_domain, domain_adaptation=args.domain_adaptation
+            lambda_domain=args.lambda_domain, domain_adaptation=args.domain_adaptation,
+            scheduler=scheduler  # Pass scheduler to train_one_epoch
         )
         
         val_loss, val_acc, val_f1, val_sensitivity, val_specificity, val_qwk, val_auc = validate(
             model, val_loader, device, epoch, wandb_run,
             lambda_consistency=args.lambda_consistency
         )
-        
-        scheduler.step()
         
         combined_metric = 0.3 * val_acc + 0.4 * val_sensitivity + 0.3 * val_specificity
         
@@ -572,6 +585,5 @@ def main():
     logging.info(f"Best validation specificity: {best_val_metrics['specificity']:.4f}")
     logging.info(f"Best validation QWK: {best_val_metrics['qwk']:.4f}")
     logging.info(f"Best validation AUC: {best_val_metrics['auc']:.4f}")
-
 if __name__ == "__main__":
     main()

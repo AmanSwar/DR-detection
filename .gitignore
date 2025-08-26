@@ -1,0 +1,35 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.png
+*.pt
+
+# Pytest cache
+.pytest_cache/
+
+# Virtual environment
+.venv/
+
+# VSCode settings
+.vscode/
+
+# Checkpoints
+chckpt/
+checkpoint/
+checkpoint_single/
+convnext_dr_classification/
+good_chkpt/
+
+# Data folder
+data/
+
+# Binary files
+*.bin
+
+# XML files
+*.xml
+
+# ONNX model files
+*.onnx

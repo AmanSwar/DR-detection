@@ -39,6 +39,7 @@ class DRIjepa(nn.Module):
         self.context_encoder = timm.create_model(
             model_name,
             pretrained=False,
+            #remove the classifier layer
             num_classes=0,
             features_only=True,
             out_indices=[-1]
@@ -104,19 +105,14 @@ class DRIjepa(nn.Module):
         return torch.tensor(boxes, device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
     def extract_target(self, feature, boxes):
-        """
-        Extract features corresponding to each box from the feature map.
-        feature: tensor of shape (B, C, H, W)
-        boxes: tensor of shape (B, n_box, 4) with coordinates [x1, y1, x2, y2]
-        Returns: tensor of shape (B, n_box, C)
-        """
+        
         B, C, H, W = feature.shape
         target_features = []
         for b in range(B):
             batch_targets = []
             for box in boxes[b]:
                 x1, y1, x2, y2 = box
-                # Crop the feature map and pool to a single vector
+             
                 target = feature[b:b+1, :, y1:y2, x1:x2]  # (1, C, box_h, box_w)
                 target = F.adaptive_avg_pool2d(target, (1, 1))  # (1, C, 1, 1)
                 batch_targets.append(target)
@@ -224,21 +220,14 @@ class Trainer:
         print(f"Checkpoint saved for epoch {epoch} with loss {loss:.4f}")
 
     def log_attention_map(self, epoch):
-        """
-        Logs an attention map every 15 epochs.
-        Here we use the output of the context encoder as a proxy for attention.
-        We average the channels of the feature map to produce a single-channel map,
-        normalize it, upsample to the original image size, and log it with wandb.
-        """
+        
         self.model.eval()  # Set model to evaluation mode
         # Grab one batch from the training loader
         sample = next(iter(self.train_loader))
         sample = sample.to(self.device)
 
         with torch.no_grad():
-            # Get feature map from context encoder
             features = self.model.context_encoder(sample)[-1]  # shape: (B, C, H, W)
-            # Average over channels to get a single-channel "attention" map
             attn_map = features.mean(dim=1, keepdim=True)  # shape: (B, 1, H, W)
             # Normalize to [0, 1]
             attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min() + 1e-8)
@@ -346,7 +335,6 @@ class Trainer:
 if __name__ == "__main__":
     print("Hii I am here")
     BATCH_SIZE = 32
-    # Replace your data pipeline accordingly.
     from data_pipeline.data_set import SSLTrainLoader , SSLValidLoader
     from data_pipeline.data_aug import IJEPAAugmentation
     dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"]

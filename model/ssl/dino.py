@@ -48,9 +48,6 @@ class Teacher(nn.Module):
 
 class DINOHead(nn.Module):
     def __init__(self, in_dim, out_dim, hidden_dim=2048, bottleneck_dim=256):
-        """
-        Projection head with an MLP and a final linear layer.
-        """
         super().__init__()
         self.mlp = nn.Sequential(
             nn.Linear(in_dim, hidden_dim),
@@ -100,12 +97,9 @@ class DINOLoss(nn.Module):
         batch_center = batch_center / teacher_out.shape[0]
         self.center = self.center * self.center_mom + batch_center * (1 - self.center_mom)
 
-# =============================================================================
-# DINO TRAINER
-# =============================================================================
 class DINO:
     def __init__(self, encoder: nn.Module, head: nn.Module, optimizer: torch.optim.Optimizer, loss_fn: nn.Module):
-        # Create separate student and teacher networks (teacher is a deepcopy with frozen params)
+      
         self.Student = Student(encoder=encoder, head=head).cuda()
         self.Teacher = Teacher(encoder=copy.deepcopy(encoder), head=copy.deepcopy(head), centering=None).cuda()
         self.optim = optimizer

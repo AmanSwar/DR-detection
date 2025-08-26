@@ -145,6 +145,8 @@ def train_one_epoch(model, dataloader, optimizer, scheduler, temperature, device
     avg_loss = running_loss / len(dataloader)
     return avg_loss
 
+
+
 def validate(model, dataloader, temperature, device, epoch, wandb_run):
     model.eval()
     running_loss = 0.0
@@ -274,11 +276,7 @@ def knn_evaluation(model, train_loader, val_loader, device, k=5, wandb_run=None)
 
 
 def main():
-    """
-    You might try a linear probe or a k-NN classifier on the embeddings after each epoch.
-    If accuracy on a downstream task is improving, your model is learning useful representations—
-    even if the loss is somewhat flat.
-    """
+
 
     def get_temperature(epoch, max_epochs, initial_temp=0.5, final_temp=0.1):
         progress = epoch / max_epochs
@@ -289,7 +287,7 @@ def main():
         "batch_size": 128,
         "lr": 5e-4,
         "lr_min": 1e-5,  
-        "warm_up_epochs": 10,  
+        "warm_up_epochs": 5,  
         "temperature": 0.2,
         "momentum": 0.99,
         "queue_size": 4096,
@@ -334,8 +332,8 @@ def main():
     best_val_loss = float('inf')
     train_loss = 0
     val_loss = 0
-    # checkpoint_path = "NaN"
-    checkpoint_path = "model/new/chckpt/moco/new/checkpoint_epoch_49.pth"
+    checkpoint_path = "NaN"
+    # checkpoint_path = "model/new/chckpt/moco/new/checkpoint_epoch_49.pth"
     if os.path.exists(checkpoint_path):
         checkpoint = torch.load(checkpoint_path, map_location=device)
         print(f"DEBUG - Checkpoint contains: epoch={checkpoint['epoch']}")
@@ -437,7 +435,7 @@ def main():
                 best_val_loss = val_loss
                 save_checkpoint(checkpoint_state, "model/new/chckpt/moco/new/new", "best_checkpoint.pth")
 
-            if (epoch + 1) % 5 == 0:  
+            if (epoch + 1) % 3 == 0:  
                 linear_probe_evaluation(model, probe_train_loader, probe_val_loader, device, wandb_run)
                 knn_evaluation(model, probe_train_loader, probe_val_loader, device, k=6, wandb_run=wandb_run)
 

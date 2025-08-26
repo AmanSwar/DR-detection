@@ -24,11 +24,13 @@ class GradingDataset():
         self._train_label = self._get_labels("train")
         self._test_label = self._get_labels("test")
 
-        self._train_len = int(len(self._train_image) * 8)
+        self._train_len = int(len(self._train_image) * 0.8)
         self._valid_image = self._train_image[self._train_len: ]
         self._train_image = self._train_image[:self._train_len]
         self._valid_label = self._train_label[self._train_len : ]
         self._train_label = self._train_label[:self._train_len]
+        print(self._train_image[:5])
+        print(self._valid_image[:5])
 
 
     def _get_img_list(self , subset: LiteralString) -> list:

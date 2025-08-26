@@ -7,7 +7,6 @@ from sklearn.metrics import cohen_kappa_score
 
 import torch
 import torch.nn as nn
-# import torch.nn.functional as F # No longer needed for OrdinalDomainLoss
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.cuda.amp import GradScaler, autocast
@@ -395,15 +394,11 @@ def main():
         freeze_backbone=args.freeze_backbone # Pass freeze argument
     ).to(device)
 
-    # Log model structure (optional)
-    # logging.info(f"Model structure:\n{model}")
 
-    # Define Data Augmentations (ensure MoCoSingleAug is appropriate for supervised fine-tuning)
-    # Consider using standard ImageNet-style augmentations if MoCoSingleAug is specific to self-supervised pre-training
     train_transform = data_aug.MoCoSingleAug(img_size=args.img_size) # Verify this augmentation pipeline
     val_transform = data_aug.MoCoSingleAug(img_size=args.img_size) # Assuming validation needs basic resize/normalize
 
-    # Define Datasets and Dataloaders
+
     dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"] # Example datasets
     
     try:
@@ -433,7 +428,6 @@ def main():
     logging.info(f"Validation dataset size: {len(val_loader.dataset)} (estimated)")
 
 
-    # Define Optimizer (Optimizing all parameters now, adjust if needed)
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     # Define Loss Function
@@ -462,29 +456,22 @@ def main():
         "loss": float('inf'), "accuracy": 0, "f1": 0, 
         "sensitivity": 0, "specificity": 0, "qwk": -1, "auc": 0 # QWK can be negative
     }
-    best_combined_metric = 0 # Reset best combined metric tracker
-    patience_counter = 0 # Reset patience counter if using early stopping based on combined metric
-    PATIENCE_LIMIT = 20 # Example patience limit for early stopping
-
+    best_combined_metric = 0 
+    patience_counter = 0 
+    PATIENCE_LIMIT = 20 
     logging.info("Starting training...")
     for epoch in range(args.epochs):
         logging.info(f"--- Epoch {epoch+1}/{args.epochs} ---")
         
-        # --- Training Phase ---
         train_loss, train_acc, train_f1 = train_one_epoch(
             model, train_loader, criterion, optimizer, device, epoch, wandb_run,
             scaler=scaler, scheduler=scheduler 
-            # Removed lambda_consistency
         )
         
-        # --- Validation Phase ---
         val_loss, val_acc, val_f1, val_sensitivity, val_specificity, val_qwk, val_auc = validate(
             model, val_loader, criterion, device, epoch, wandb_run
-             # Removed lambda_consistency
         )
         
-        # --- Checkpointing and Best Metric Tracking ---
-        # Using a combined metric focused on clinical relevance (adjust weights as needed)
         combined_metric = 0.4 * val_qwk + 0.2 * val_sensitivity + 0.2 * val_specificity + 0.2 * val_auc 
         
         checkpoint_state = {
@@ -500,17 +487,14 @@ def main():
             'config': vars(args) # Save config used for this run
         }
         
-        # Save checkpoint periodically
         if (epoch + 1) % 10 == 0: # Save every 10 epochs
             save_checkpoint(checkpoint_state, checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pth")
         
-        # Save checkpoint based on best validation loss
         if val_loss < best_val_metrics["loss"]:
             logging.info(f"New best validation loss: {val_loss:.4f}")
             best_val_metrics["loss"] = val_loss
             save_checkpoint(checkpoint_state, checkpoint_dir, "best_loss_checkpoint.pth")
 
-        # Save checkpoint based on best QWK (often a primary metric for DR grading)
         if val_qwk > best_val_metrics["qwk"]:
             logging.info(f"New best validation QWK: {val_qwk:.4f}")
             best_val_metrics["qwk"] = val_qwk
@@ -523,7 +507,6 @@ def main():
             best_val_metrics["auc"] = val_auc
 
 
-        # Save based on the combined clinical metric and implement early stopping logic
         if combined_metric > best_combined_metric:
             logging.info(f"New best combined clinical metric: {combined_metric:.4f}")
             best_combined_metric = combined_metric

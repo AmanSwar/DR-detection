@@ -35,7 +35,7 @@ class DRIjepa(nn.Module):
             model_name,
             pretrained=True,
             num_classes=0,
-            global_pool=''  # Remove global pooling to get feature maps
+            global_pool=''  
         )
         self.target_encoder = timm.create_model(
             model_name,

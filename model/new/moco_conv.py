@@ -39,11 +39,11 @@ class MoCoV3Model(nn.Module):
             nn.ReLU(inplace=True),
             nn.Linear(hidden_dim, projection_dim)
         )
-
-        # Initialize key encoder with query encoder weights and freeze its gradients
+        #key weights
         for param_q, param_k in zip(self.query_encoder.parameters(), self.key_encoder.parameters()):
             param_k.data.copy_(param_q.data)
             param_k.requires_grad = False
+
         for param_q, param_k in zip(self.query_projector.parameters(), self.key_projector.parameters()):
             param_k.data.copy_(param_q.data)
             param_k.requires_grad = False
@@ -60,7 +60,6 @@ class MoCoV3Model(nn.Module):
         q = self.query_projector(q)
         q = nn.functional.normalize(q, dim=1)
 
-        # Compute key features with no gradient and update key encoder later via momentum
         with torch.no_grad():
             k = self.key_encoder(im_k)
             k = self.key_projector(k)
@@ -70,8 +69,10 @@ class MoCoV3Model(nn.Module):
     @torch.no_grad()
     def update_key_encoder(self):
         """Momentum update of key encoder's parameters."""
+        
         for param_q, param_k in zip(self.query_encoder.parameters(), self.key_encoder.parameters()):
             param_k.data = param_k.data * self.m + param_q.data * (1. - self.m)
+            
         for param_q, param_k in zip(self.query_projector.parameters(), self.key_projector.parameters()):
             param_k.data = param_k.data * self.m + param_q.data * (1. - self.m)
 
@@ -80,8 +81,9 @@ class MoCoV3Model(nn.Module):
         """Update the negative key queue with the new keys."""
         batch_size = keys.shape[0]
         ptr = int(self.queue_ptr)
-        # If the new keys exceed the remaining space in the queue, wrap around
+        
         if ptr + batch_size > self.queue_size:
+            # find overflow amt
             overflow = (ptr + batch_size) - self.queue_size
             self.queue[ptr:self.queue_size] = keys[:(batch_size - overflow)]
             self.queue[0:overflow] = keys[(batch_size - overflow):]
@@ -90,35 +92,20 @@ class MoCoV3Model(nn.Module):
             self.queue[ptr:ptr + batch_size] = keys
             self.queue_ptr[0] = (ptr + batch_size) % self.queue_size
 
-# -----------------------------
-# 4. MoCo v3 Loss Function (InfoNCE Loss)
-# -----------------------------
+
 def moco_loss(q, k, queue, temperature=0.2):
-    """
-    Args:
-        q: Query features of shape [N, dim]
-        k: Key features (positive) of shape [N, dim]
-        queue: Negative keys of shape [K, dim]
-        temperature: Temperature parameter for scaling logits
-    Returns:
-        InfoNCE loss
-    """
-    # Positive logits: (N, 1)
+    # cosine similarity
+    # dot product
     l_pos = torch.einsum('nc,nc->n', [q, k]).unsqueeze(-1)
-    # Negative logits: (N, K)
     l_neg = torch.mm(q, queue.T)
-    # Concatenate logits and apply temperature scaling
     logits = torch.cat([l_pos, l_neg], dim=1)
     logits /= temperature
 
-    # Labels: positives are the 0-th index in logits
     labels = torch.zeros(logits.shape[0], dtype=torch.long, device=logits.device)
     loss = nn.CrossEntropyLoss()(logits, labels)
     return loss
 
-# -----------------------------
-# 5. Training and Validation Functions
-# -----------------------------
+
 def train_one_epoch(model, dataloader, optimizer, temperature, device, epoch, wandb_run):
     model.train()
     running_loss = 0.0

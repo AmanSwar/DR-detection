@@ -22,11 +22,10 @@ from torch.cuda.amp import autocast
 
 
 class DRLesionAttention(nn.Module):
-    """Attention module specifically designed for DR lesions"""
     def __init__(self, dim):
         super().__init__()
-
         self.scale = dim ** -0.5
+        #custom queries -> 5,dim
         self.lesion_queries = nn.Parameter(torch.randn(1, 5, dim)) 
         self.to_qkv = nn.Linear(dim, dim * 3, bias=False)
         

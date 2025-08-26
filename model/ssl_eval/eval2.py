@@ -4,10 +4,8 @@ import timm
 import os
 from data_pipeline import data_aug, data_set
 from torch.optim.lr_scheduler import CosineAnnealingLR
-import wandb  # Import wandb
+import wandb 
 
-# Define MoCoV3Model, LinearProbeHead, extract_features, linear_probe_evaluation, 
-# and knn_evaluation functions as in your original code (unchanged)
 class MoCoV3Model(nn.Module):
     def __init__(self, base_model='convnext_small', projection_dim=256, hidden_dim=1024,
                  queue_size=4096, momentum=0.99, pretrained=False):
@@ -111,13 +109,13 @@ def linear_probe_evaluation(model, train_loader, val_loader, device):
         probe = LinearProbeHead(embed_dim, num_classes).to(device)
         optimizer = torch.optim.Adam(probe.parameters(), lr=1e-3)
         criterion = nn.CrossEntropyLoss()
-        probe_epochs = 5
+        probe_epochs = 15
         for ep in range(probe_epochs):
             probe.train()
             perm = torch.randperm(train_feats.size(0))
             train_feats_shuf = train_feats[perm].to(device)
             train_labels_shuf = train_labels[perm].to(device)
-            batch_size = 64
+            batch_size = 8
             running_loss = 0.0
             num_batches = 0
             for i in range(0, train_feats_shuf.size(0), batch_size):
@@ -168,16 +166,14 @@ def knn_evaluation(model, train_loader, val_loader, device, k=5):
     print(f"[k-NN (k={k})] Validation Accuracy: {acc:.2f}%")
     return acc
 
-# Device setup
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Model, optimizer, and scheduler setup
 model = MoCoV3Model().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
 scheduler = CosineAnnealingLR(optimizer, T_max=300 - 10, eta_min=1e-5)
 
 # Checkpoint loading
-checkpoint_pth = "model/new/chckpt/moco/checkpoint_epoch_92.pth"
+checkpoint_pth = "model/checkpoint/moco/best_checkpoint.pth"
 start_epoch = 0  # Default value if checkpoint doesn't exist
 if os.path.exists(checkpoint_pth):
     checkpoint = torch.load(checkpoint_pth, map_location=device)
@@ -189,18 +185,18 @@ if os.path.exists(checkpoint_pth):
 # Data loaders
 train_aug = data_aug.MoCoSingleAug(img_size=256)
 val_aug = data_aug.MoCoSingleAug(img_size=256)
-dataset_names = ["eyepacs", "aptos", "ddr", "idrid", "messdr"]
+dataset_names = ["aptos", "ddr", "idrid", "messdr"]
 probe_train_loader = data_set.UniformTrainDataloader(
     dataset_names=dataset_names,
     transformation=train_aug,
-    batch_size=64,
+    batch_size=32,
     num_workers=0,
     sampler=True
 ).get_loader()
 probe_val_loader = data_set.UniformValidDataloader(
     dataset_names=dataset_names,
     transformation=val_aug,
-    batch_size=8,
+    batch_size=32,
     num_workers=0,
     sampler=True
 ).get_loader()
@@ -209,15 +205,15 @@ probe_val_loader = data_set.UniformValidDataloader(
 model.eval()
 
 # Initialize wandb
-wandb.init(project="MoCoV3_Evaluation", name=f"eval_epoch_{start_epoch}", config={
-    "model": "MoCoV3",
-    "base_model": "convnext_small",
-    "dataset_names": dataset_names,
-    "checkpoint": checkpoint_pth,
-    "epoch": start_epoch,
-    "linear_probe_epochs": 5,
-    "knn_k": 5,
-})
+# wandb.init(project="MoCoV3_Evaluation", name=f"eval_epoch_{start_epoch}", config={
+#     "model": "MoCoV3",
+#     "base_model": "convnext_small",
+#     "dataset_names": dataset_names,
+#     "checkpoint": checkpoint_pth,
+#     "epoch": start_epoch,
+#     "linear_probe_epochs": 5,
+#     "knn_k": 5,
+# })
 
 # Evaluate the model
 print("Evaluating the pretrained MoCo v3 model...")
@@ -225,14 +221,17 @@ linear_acc = linear_probe_evaluation(model, probe_train_loader, probe_val_loader
 knn_acc = knn_evaluation(model, probe_train_loader, probe_val_loader, device, k=5)
 
 # Log accuracies to wandb
-wandb.log({
-    "linear_probe_accuracy": linear_acc,
-    "knn_accuracy": knn_acc,
-    "epoch": start_epoch
-})
+# wandb.log({
+#     "linear_probe_accuracy": linear_acc,
+#     "knn_accuracy": knn_acc,
+
+
+
+#     "epoch": start_epoch
+# })
 
 # Print results
 print(f"Accuracy (Linear: {linear_acc:.2f}%, k-NN: {knn_acc:.2f}%)")
 
 # Finish the wandb run
-wandb.finish()
+# wandb.finish()

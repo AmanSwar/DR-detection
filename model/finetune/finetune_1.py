@@ -676,7 +676,7 @@ def main():
     parser.add_argument("--img_size", type=int, default=256, help="Image size")
     parser.add_argument("--use_amp", action="store_true", default=True, help="Use automatic mixed precision")
     parser.add_argument("--use_mixup", action="store_true", default=True, help="Use Mixup augmentation")
-    parser.add_argument("--early_stopping", type=int, default=15, help="Early stopping patience")
+    parser.add_argument("--early_stopping", type=int, default=20, help="Early stopping patience")
     parser.add_argument("--lambda_consistency", type=float, default=0.3, help="Weight for grade consistency loss")
     parser.add_argument("--lambda_domain", type=float, default=0.1, help="Weight for domain adaptation loss")
     parser.add_argument("--domain_adaptation", action="store_true", default=True, help="Use domain adaptation")

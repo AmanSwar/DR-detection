@@ -37,7 +37,7 @@ if torch.cuda.is_available():
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False # Disable benchmark for full determinism
 
-# --- Model Components ---
+
 
 # Based on CBAM
 class LesionAttentionModule(nn.Module):
@@ -46,7 +46,7 @@ class LesionAttentionModule(nn.Module):
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.max_pool = nn.AdaptiveMaxPool2d(1)
         
-        # Shared MLP for channel attention
+        #shared MLP
         self.shared_mlp = nn.Sequential(
             nn.Conv2d(in_channels, in_channels // reduction_ratio, kernel_size=1, bias=False),
             nn.ReLU(inplace=True),
@@ -59,23 +59,35 @@ class LesionAttentionModule(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        # Channel Attention
+        # avg -> shared mlp -> avg out (bs , c )
         avg_out = self.shared_mlp(self.avg_pool(x))
+        # max -> shared mlp -> max out (bs ,c )
         max_out = self.shared_mlp(self.max_pool(x))
+        # channel attn => sum(avg + max) -> sigmoid -> out
         channel_att = self.sigmoid(avg_out + max_out)
+        # attn into main channel
         x_channel = x * channel_att
 
-        # Spatial Attention
+        # spatial attn
+        #avg
         avg_out_spatial = torch.mean(x_channel, dim=1, keepdim=True)
+        #max
         max_out_spatial, _ = torch.max(x_channel, dim=1, keepdim=True)
+        #concatinate max and avg
         spatial_input = torch.cat([avg_out_spatial, max_out_spatial], dim=1)
+        #conv layer(spatial input) -> sigmoid -> outs
         spatial_att = self.sigmoid(self.conv_spatial(spatial_input))
 
+        #multiply it by main x_channel
         return x_channel * spatial_att
+
+
+#Gradient Reversal 
 
 class GradientReversal(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, alpha):
+        '''do nothing'''
         ctx.alpha = alpha
         return x.view_as(x)
 
@@ -84,9 +96,11 @@ class GradientReversal(torch.autograd.Function):
         # Multiply gradient by -alpha, pass None for alpha's gradient
         return grad_output.neg() * ctx.alpha, None
 
+
 class GradeConsistencyHead(nn.Module):
     def __init__(self, feature_dim, num_grades=5, dropout_rate=0.4):
         super(GradeConsistencyHead, self).__init__()
+        #grade predictor 
         self.grade_predictor = nn.Sequential(
             nn.Linear(feature_dim, 512),
             nn.BatchNorm1d(512),
@@ -107,21 +121,21 @@ class GradeConsistencyHead(nn.Module):
 
     def forward(self, x):
         logits = self.grade_predictor(x)
-        # Ensure ordinal thresholds are monotonically increasing (optional but good practice)
-        # Here, we directly predict them. Can be post-processed if needed.
+
         ordinal_thresholds = self.ordinal_encoder(x)
         return logits, ordinal_thresholds
+
+
 
 class EnhancedDRClassifier(nn.Module):
     def __init__(self, checkpoint_path, num_classes=5, freeze_backbone=True, dropout_rate=0.5):
         super(EnhancedDRClassifier, self).__init__()
         
-        # --- Load MoCo Backbone ---
         try:
             checkpoint = torch.load(checkpoint_path, map_location='cpu')
             moco_state_dict = checkpoint['model_state_dict']
             config = checkpoint['config']
-            base_model_name = config.get('base_model', 'resnet50') # Default if not found
+            base_model_name = config.get('base_model', 'resnet50') 
             logging.info(f"Loading backbone: {base_model_name} from MoCo checkpoint.")
             self.backbone = timm.create_model(base_model_name, pretrained=False, num_classes=0) # num_classes=0 removes classifier head
         except FileNotFoundError:
@@ -188,9 +202,7 @@ class EnhancedDRClassifier(nn.Module):
             nn.Linear(256, 5) # Assuming 5 domains based on dataset_names
         )
 
-        # --- Prototypes (Optional, for analysis or future loss terms) ---
-        self.register_buffer('prototypes', torch.zeros(num_classes, self.feature_dim))
-        self.register_buffer('prototype_counts', torch.zeros(num_classes))
+
 
         # --- Initialize Weights for New Layers ---
         self._initialize_weights()
@@ -221,8 +233,7 @@ class EnhancedDRClassifier(nn.Module):
 
         # --- Attention ---
         attended_features = self.attention(features)
-        # Global Average Pooling after attention
-        h = torch.mean(attended_features, dim=(2, 3)) # Shape: (batch_size, feature_dim)
+        h = torch.mean(attended_features, dim=(2, 3)) # Shape: (batch_size, 768)
 
         # --- Main Classifier Output ---
         logits = self.classifier(h)
@@ -236,23 +247,7 @@ class EnhancedDRClassifier(nn.Module):
             reversed_features = GradientReversal.apply(h, alpha)
             domain_logits = self.domain_classifier(reversed_features)
 
-        # --- Prototype Update (Non-differentiable) ---
-        if update_prototypes and labels is not None and self.training: # Only update during training
-            with torch.no_grad():
-                for i, label in enumerate(labels):
-                    # Ensure label is within bounds
-                    if 0 <= label < self.prototypes.size(0):
-                        current_count = self.prototype_counts[label].item()
-                        # Use momentum update for stability (e.g., momentum=0.99)
-                        momentum = 0.99
-                        if current_count == 0: # First sample for this class
-                             self.prototypes[label] = h[i].clone()
-                        else:
-                            self.prototypes[label] = momentum * self.prototypes[label] + (1 - momentum) * h[i]
-                        # Increment count (using item() and direct assignment avoids in-place issues)
-                        self.prototype_counts[label] = current_count + 1
-                    else:
-                        logging.warning(f"Label {label.item()} out of bounds for prototype update.")
+
 
         if get_attention:
             return logits, grade_outputs, domain_logits, h, attended_features
@@ -291,9 +286,9 @@ def OrdinalDomainLoss(outputs, labels, grade_outputs=None, domain_logits=None, d
     # --- Main Classification Loss ---
     main_criterion = nn.CrossEntropyLoss()
     main_loss = main_criterion(outputs, labels)
+    #global loss => loss
     loss = main_loss
-    consistency_loss_val = 0.0 # For logging
-    domain_loss_val = 0.0 # For logging
+
 
 
     # --- Grade Consistency Loss ---
@@ -301,10 +296,7 @@ def OrdinalDomainLoss(outputs, labels, grade_outputs=None, domain_logits=None, d
         grade_logits, ordinal_thresholds = grade_outputs
         batch_size = labels.size(0)
 
-        # 1. Standard CE loss on the grade predictor (Treat as multi-class)
-        # grade_ce_loss = main_criterion(grade_logits, labels) # Option 1: Simple CE
-
-        # 2. Binary Cross Entropy for cumulative probabilities (Ordinal approach 1)
+        
         targets_cumulative = torch.zeros_like(grade_logits)
         for i in range(batch_size):
             if 0 <= labels[i] < num_classes: # Ensure label is valid
@@ -849,18 +841,6 @@ def main():
         logging.info(f"Epoch [{epoch+1}/{args.epochs}] Duration: {epoch_duration:.2f} seconds")
 
 
-        # --- Learning Rate Scheduler Step ---
-        # Step OneCycleLR after each batch, but other schedulers (like ReduceLROnPlateau) might step based on validation loss
-        # Based on the setup, OneCycleLR steps internally within train_one_epoch implicitly or needs explicit step here.
-        # If OneCycleLR is used, it should typically be stepped after each optimizer step.
-        # Let's assume train_one_epoch handles the LR logging, but we might need scheduler.step() here if not done per-batch.
-        # For OneCycleLR, step *should* happen after each batch/optimizer step. Let's assume it's handled correctly if LR logs look right.
-        # If using ReduceLROnPlateau: scheduler.step(val_loss)
-        # If using CosineAnnealingLR: scheduler.step()
-        # Since OneCycleLR takes total_steps, it's likely managed per optimizer step implicitly by some frameworks or needs explicit loop in train_one_epoch.
-        # Re-checking OneCycleLR docs: yes, it's typically stepped after optimizer.step(). Let's add it to train_one_epoch if not already there.
-        # For simplicity here, assuming LR updates happen and just logging. If LR isn't changing, add scheduler.step() in train_one_epoch after optimizer.step().
-        # Let's assume OneCycleLR needs step per epoch if not per batch
         if not isinstance(scheduler, OneCycleLR): # OneCycleLR usually steps per batch
              scheduler.step() # Step other schedulers per epoch
 
