@@ -1,32 +1,39 @@
-# RetinaSys: A Generalizable Real-Time Diabetic Retinopathy Detection System
+# A Research Repository for Diabetic Retinopathy Detection
 
-This repository contains the official PyTorch implementation for the paper: **"RetinaSys: Generalizable Real-Time Diabetic Retinopathy Detection System"**.
+This repository contains a collection of PyTorch implementations for various deep learning models and self-supervised learning methods for Diabetic Retinopathy (DR) detection. This repository was used for research and experimentation, and it contains a wide range of scripts for training, fine-tuning, and evaluating different models.
 
-Diabetic Retinopathy (DR) is a leading cause of preventable blindness worldwide, yet screening procedures are often inefficient and subject to the availability of trained ophthalmologists. While deep learning has shown promise, many models struggle with real-world clinical adoption due to challenges in adaptability, interpretability, and deployment. RetinaSys is an innovative framework designed to bridge this gap, focusing on **strong generalization** across diverse datasets, **real-time performance** on standard CPU hardware, and **clinical interpretability** through Explainable AI (XAI).
+Diabetic Retinopathy (DR) is a leading cause of preventable blindness worldwide. This repository explores various deep learning techniques to build a robust and generalizable DR detection system. The focus is on leveraging self-supervised learning to learn meaningful representations from retinal fundus images, and then fine-tuning these models for the downstream task of DR classification.
 
 ## 🌟 Key Features
 
-- **Self-Supervised Pre-training**: RetinaSys leverages Momentum Contrast (MoCo v3) to pre-train a modern ConvNeXt backbone on a wide range of unlabeled fundus images. This approach allows the model to learn robust and generalizable visual features—such as the intricate network of retinal blood vessels and optic disc structures—without requiring costly and time-consuming manual annotations. This foundational understanding is critical for high performance in the downstream diagnostic task.
-    
-- **Multi-Task Fine-tuning**: After pre-training, the model is fine-tuned using a unique multi-task paradigm that simultaneously optimizes for three distinct objectives, ensuring both accuracy and reliability:
-    
-    - A **Lesion-Attention Module (LAM)**, inspired by CBAM, mimics a clinician's diagnostic process by dynamically focusing the model's attention on clinically relevant features like microaneurysms, hemorrhages, and exudates.
-        
-    - A **Grade Consistency Head** enforces the natural ordinal relationship of DR severity (e.g., Mild DR is less severe than Moderate DR). This significantly reduces the risk of critical misclassifications, such as predicting a mild case as severe, which is crucial for patient safety and trust.
-        
-    - A **Domain-Adversarial Module** with a gradient reversal layer actively encourages the model to learn features that are invariant to dataset-specific biases (e.g., differences in camera models, lighting conditions, or patient ethnicity), dramatically improving its generalization to unseen clinical environments.
-        
-- **Explainable AI (XAI)**: To address the "black box" problem in medical AI, RetinaSys integrates a comprehensive suite of XAI techniques. These tools—including Attention Maps, Integrated Gradients, SHAP, and Monte Carlo Dropout for uncertainty estimation—provide transparent, human-interpretable insights into the model's decision-making process, fostering trust and collaboration between the AI system and clinicians.
-    
-- **Real-Time CPU Deployment**: A major barrier to AI adoption is the need for expensive, specialized hardware. RetinaSys is optimized using the OpenVINO toolkit for efficient, real-time inference on standard Intel CPUs. Through techniques like FP16 precision reduction and INT8 quantization, the model achieves a significant reduction in memory footprint and computational load with minimal impact on diagnostic accuracy, making it a practical and scalable solution for deployment in resource-constrained clinical settings.
-    
+- **Multiple Self-Supervised Learning (SSL) Methods**: Implementations of various SSL methods, including:
+    - Momentum Contrast (MoCo)
+    - DINO (self-distillation with no labels)
+    - iBOT (Image-based Joint-embedding Transformer)
+    - iJEPA (Image-based Joint-Embedding Predictive Architecture)
+    - SimCLR (A Simple Framework for Contrastive Learning of Visual Representations)
+- **Various Deep Learning Models**: Implementations of different backbone architectures, such as:
+    - ConvNeXt
+    - Vision Transformer (ViT)
+    - Swin Transformer
+- **Multi-Task Fine-tuning**: The repository includes scripts for fine-tuning the pre-trained models on the DR classification task.
+- **Explainable AI (XAI)**: The repository includes a suite of XAI techniques to provide insights into the model's decision-making process, including:
+    - Attention Maps
+    - Integrated Gradients
+    - SHAP
+    - Uncertainty Estimation (Monte Carlo Dropout)
+- **Optimized for Deployment**: The repository includes scripts for optimizing the models for real-time CPU deployment using OpenVINO.
 
 ## 🏗️ System Architecture
 
-The RetinaSys pipeline is a carefully designed, two-stage process. The first stage builds a strong visual foundation through self-supervised learning, and the second stage specializes this knowledge for the clinical task of DR grading while ensuring robustness and fairness. This modular design allows for independent improvements to each component.
+The general pipeline used in this repository follows a two-stage process:
+
+1.  **Self-Supervised Pre-training**: A backbone model (e.g., ConvNeXt, ViT) is pre-trained on a large dataset of unlabeled retinal fundus images using one of the implemented SSL methods. This allows the model to learn robust and generalizable visual features.
+2.  **Supervised Fine-tuning**: The pre-trained model is then fine-tuned on a smaller dataset of labeled images for the task of DR classification.
+
+This modular design allows for independent improvements to each component.
 
 ![RetinaSys Architecture](assets/training.drawio.png)
-    
 
 ## 👁️ Diabetic Retinopathy Grades
 
@@ -34,39 +41,32 @@ The system is trained to classify retinal fundus images into five distinct grade
 
 ![DR Grades](assets/DRgrades.png)
 ![Attention Mapes](assets/attention_map.png)
-    
 
 ## 🚀 Getting Started
 
 ### 1. Prerequisites
 
 - Python 3.9+
-    
-- PyTorch (latest version recommended)
-    
-- OpenCV, Scikit-learn, Timm, PyYAML
-    
-- OpenVINO Toolkit
-    
-- NVIDIA GPU with CUDA for training (recommended)
-    
-- Intel CPU for optimized deployment
-    
+- PyTorch
+- OpenCV
+- Albumentations
+- Einops
+- And other packages listed in `requirements.txt`.
 
 ### 2. Installation
 
 First, clone the repository to your local machine:
 
 ```
-git clone https://github.com/your-username/retinasys-diabetic-retinopathy.git
-cd retinasys-diabetic-retinopathy
+git clone <repository-url>
+cd <repository-name>
 ```
 
 Next, it is highly recommended to create a dedicated virtual environment to manage dependencies and avoid conflicts:
 
 ```
-python -m venv venv
-source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
+python -m venv .venv
+source .venv/bin/activate  # On Windows, use `venv\Scripts\activate`
 pip install -r requirements.txt
 ```
 
@@ -76,34 +76,35 @@ This project's robustness comes from its training on a diverse collection of pub
 
 ```
 data/
-├── eyepacs/
-│   ├── train/
-│   └── test/
+├── aptos/
 ├── ddr/
-│   ├── train/
-│   └── test/
-└── ... (other datasets)
+├── eyepacs/
+├── idrid/
+└── mesdr/
 ```
 
-Once the data is correctly organized, run the provided preprocessing script. This will handle tasks like image resizing, cleaning, and creating the necessary file lists for training and evaluation.
+## 🔬 Experiments
 
-```
-python scripts/1_preprocess_data.py --data_dir data/
-```
+The `experimental_script` directory contains numerous scripts for running various experiments. Here are some examples:
 
+-   `train_ijepa.py`: Train a model using the iJEPA self-supervised learning method.
+-   `train_drijepa.py`: A custom version of iJEPA for DR detection.
+-   `train_iBOT.py`: Train a model using the iBOT self-supervised learning method.
+-   `train_dino.py`: Train a model using the DINO self-supervised learning method.
+-   `finetune/new_finetune.py`: A script for fine-tuning a pre-trained model.
+
+Please refer to the scripts in the `experimental_script` directory for more details on how to run the experiments.
 
 ## 📊 Results
 
-The model achieves strong performance across multiple evaluation criteria. It maintains high specificity (correctly identifying healthy patients) and demonstrates excellent ordinal agreement with ground-truth grades, as measured by the Quadratic Weighted Kappa (QWK). A high QWK score is clinically significant as it indicates that when the model does make an error, it is typically between adjacent grades (e.g., Mild vs. Moderate), which is far less severe than a major misdiagnosis.
+The models trained using the scripts in this repository can achieve strong performance across multiple evaluation criteria, including high specificity and Quadratic Weighted Kappa (QWK).
 
 #### Training & Validation Curves
 ![MoCo Loss](assets/moco_train_loss.png)
 ![Finetuning Curves](assets/train_epoch.png)
-    
 
 ## 🧠 Explainable AI (XAI) Analysis
 
-A correct prediction is useful, but an explainable one is trustworthy. To build clinical trust and facilitate model debugging, RetinaSys provides clear visual explanations for its predictions. These visualizations highlight the specific pathological features (e.g., microaneurysms, hard exudates) that drive the model's diagnostic reasoning, creating a powerful feedback loop for clinicians.
+A correct prediction is useful, but an explainable one is trustworthy. To build clinical trust and facilitate model debugging, this repository provides clear visual explanations for its predictions. These visualizations highlight the specific pathological features (e.g., microaneurysms, hard exudates) that drive the model's diagnostic reasoning, creating a powerful feedback loop for clinicians.
 
 ![XAI Analysis](assets/all_combined.png)
-    
